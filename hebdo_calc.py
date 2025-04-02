@@ -39,10 +39,6 @@ def main(period_range, period_start_dt, period_end_dt):
     sums["ELNX_eq"] = sums["ELNX"] + sums["EL_2006"] + sums["EL_PowerRed"] + sums["EL_Misassigned"]
     sums["Epot_eq"] = sums["wtc_kWG1TotE_accum"] + sums["ELX_eq"] + sums["ELNX_eq"]
 
-    MAA_period_brut_mis = round(
-        100 * (sums["wtc_kWG1TotE_accum"] + sums["ELX_eq"]) / (sums["Epot_eq"]),
-        2,
-    )
 
     title = f"Du {period_start_dt.strftime('%Y_%m_%d')} au {period_end_dt.strftime('%Y_%m_%d')}"
 

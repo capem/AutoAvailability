@@ -1,50 +1,46 @@
 import os
-import urllib
-from datetime import datetime as dt
-from dateutil.relativedelta import relativedelta
 from zipfile import ZipFile
 import numpy as np
 import pandas as pd
-from sqlalchemy import create_engine
-
 
 from scipy.interpolate import interp1d
 
-# from scipy.stats import binned_statistic
-# from scipy import integrate
-# from scipy.integrate import quad
-
-
-def zip_to_df(data_type, sql, period):
+def zip_to_df(data_type, period):
+    """
+    Read data from CSV files that are either extracted from ZIP archives
+    or directly generated from the database.
+    
+    Args:
+        data_type: Type of data (met, tur, grd, etc.)
+        sql: SQL query to execute - Note: With CSV files, this parameter is mainly for backward compatibility
+        period: Period in YYYY-MM format
+        
+    Returns:
+        DataFrame with the query results
+    """
+    # Get file information
     file_name = f"{period}-{data_type.lower()}"
-
     data_type_path = f"./monthly_data/uploads/{data_type.upper()}/"
+    csv_file = f"{data_type_path}{file_name}.csv"
+    zip_file = f"{data_type_path}{file_name}.zip"
+    
+    # Check if CSV file already exists
+    if not os.path.exists(csv_file):
+        # Check if ZIP file exists
+        if os.path.exists(zip_file):
+            # Extract CSV from ZIP
+            with ZipFile(zip_file, "r") as zipf:
+                zipf.extractall(data_type_path)
 
-    ZipFile(f"{data_type_path}{file_name}.zip", "r").extractall(data_type_path)
-
-    conn_str = r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};" rf"DBQ={data_type_path}{file_name}.mdb;"
-    conn_str = f"access+pyodbc:///?odbc_connect={urllib.parse.quote_plus(conn_str)}"
-    cnxn = create_engine(conn_str, echo=True)
-
-    df = pd.read_sql(sql, cnxn)
-    cnxn.dispose()
-    return df
-
-
-def sqldate_to_datetime(column):
+    
+    # Read CSV file directly into pandas DataFrame
     try:
-        column = column.str.replace(",", ".").astype(float)
-    except:
-        pass
-    day_parts = np.modf(column.loc[~column.isna()])
-
-    column.loc[~column.isna()] = (
-        dt(1899, 12, 30)
-        + day_parts[1].astype("timedelta64[D]", errors="ignore")
-        + (day_parts[0] * 86400000).astype("timedelta64[ms]", errors="ignore")
-    )
-    column = column.fillna(pd.NaT)
-    return column
+        df = pd.read_csv(csv_file)         
+    except Exception as e:
+        raise ValueError(f"Error reading CSV file {csv_file}: {str(e)}")
+    
+    # Return the dataframe
+    return df
 
 
 # Determine alarms real periods
@@ -275,54 +271,27 @@ class read_files:
     # ------------------------------grd-------------------------------------
     @staticmethod
     def read_grd(period):
-        usecols_grd = """TimeStamp, StationId, wtc_ActPower_min, wtc_ActPower_max,
-        wtc_ActPower_mean"""
 
-        sql_grd = f"Select {usecols_grd} FROM tblSCTurGrid;"
-
-        grd = zip_to_df(data_type="grd", sql=sql_grd, period=period)
-        grd["TimeStamp"] = pd.to_datetime(grd["TimeStamp"], format="%m/%d/%y %H:%M:%S")
+        grd = zip_to_df(data_type="grd", period=period)
+        grd["TimeStamp"] = pd.to_datetime(grd["TimeStamp"])
 
         return grd
 
     # ------------------------------cnt-------------------------------------
     @staticmethod
     def read_cnt(period):
-        usecols_cnt = """TimeStamp, StationId, wtc_kWG1Tot_accum,
-        wtc_kWG1TotE_accum, wtc_kWG1TotI_accum"""
 
-        sql_cnt = f"Select {usecols_cnt} FROM tblSCTurCount;"
-
-        cnt = zip_to_df(data_type="cnt", sql=sql_cnt, period=period)
-
-        cnt["TimeStamp"] = pd.to_datetime(cnt["TimeStamp"], format="%m/%d/%y %H:%M:%S")
+        cnt = zip_to_df(data_type="cnt",  period=period)
+        cnt["TimeStamp"] = pd.to_datetime(cnt["TimeStamp"])
 
         return cnt
 
     # -----------------------------sum---------------------------
     @staticmethod
     def read_sum(period):
-        # usecols_sum = """
-        # SELECT CDbl(TimeOn) AS TOn, CDbl(TimeOff) AS TOff,
-        # StationNr, Alarmcode, ID, Parameter
-        # FROM tblAlarmLog WHERE TimeOff IS NOT NULL
-        # union
-        # SELECT CDbl(TimeOn) AS TOn, TimeOff AS TOff,
-        # StationNr, Alarmcode, ID, Parameter
-        # FROM tblAlarmLog WHERE TimeOff IS NULL
-        # """
-        # alarms = zip_to_df("sum", usecols_sum, period)
 
-        # alarms.rename(columns={"TOn": "TimeOn", "TOff": "TimeOff"}, inplace=True)
-        # alarms.loc[:, "TimeOn"] = sqldate_to_datetime(alarms["TimeOn"].copy())
-        # alarms.loc[:, "TimeOff"] = sqldate_to_datetime(alarms["TimeOff"].copy())
+        alarms = zip_to_df("sum", period)
 
-        alarms = pd.read_csv(
-            f"./monthly_data/uploads/SUM/{period}-sum.rpt",
-            sep="|",
-            # skipfooter=2
-            # on_bad_lines="skip",
-        )
         alarms.dropna(subset=["Alarmcode"], inplace=True)
         alarms["TimeOn"] = pd.to_datetime(alarms["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f")
         alarms["TimeOff"] = pd.to_datetime(alarms["TimeOff"], format="%Y-%m-%d %H:%M:%S.%f")
@@ -338,24 +307,18 @@ class read_files:
     # ------------------------------tur---------------------------
     @staticmethod
     def read_tur(period):
-        usecols_tur = """TimeStamp, StationId, wtc_AcWindSp_mean, wtc_AcWindSp_stddev,
-        wtc_ActualWindDirection_mean, wtc_ActualWindDirection_stddev"""
 
-        sql_tur = f"Select {usecols_tur} FROM tblSCTurbine;"
-
-        tur = zip_to_df("tur", sql_tur, period)
+        tur = zip_to_df("tur", period)
+        tur["TimeStamp"] = pd.to_datetime(tur["TimeStamp"])
 
         return tur
 
     # ------------------------------met---------------------------
     @staticmethod
     def read_met(period):
-        usecols_met = """TimeStamp, StationId ,met_WindSpeedRot_mean,
-        met_WinddirectionRot_mean"""
 
-        sql_met = f"Select {usecols_met} FROM tblSCMet;"
-
-        met = zip_to_df("met", sql_met, period)
+        met = zip_to_df("met", period)
+        met["TimeStamp"] = pd.to_datetime(met["TimeStamp"])
 
         met = met.pivot_table(
             index="TimeStamp",
@@ -374,11 +337,9 @@ class read_files:
 
     @staticmethod
     def read_din(period):
-        usecols_din = """TimeStamp, StationId, wtc_PowerRed_timeon"""
 
-        sql_din = f"Select {usecols_din} FROM tblSCTurDigiIn;"
-
-        din = zip_to_df("din", sql_din, period)
+        din = zip_to_df("din", period)
+        din["TimeStamp"] = pd.to_datetime(din["TimeStamp"])
 
         return din
 
@@ -398,20 +359,7 @@ def full_calculation(period):
     # reading all files with function
     met, tur, alarms, cnt, grd, din = read_files.read_all(period)
 
-    # cnt = cnt.query("TimeStamp <= '2021-11-29 18:00:00.000'")
     # ------------------------------------------------------------
-
-    period_dt = dt.strptime(period, "%Y-%m")
-    period_month = period_dt.month
-    previous_period_dt = period_dt + relativedelta(months=-1)
-    previous_period = previous_period_dt.strftime("%Y-%m")
-    next_period_dt = period_dt + relativedelta(months=1)
-    next_period = next_period_dt.strftime("%Y-%m")
-
-    currentMonth = dt.now().month
-    currentYear = dt.now().year
-    currentPeriod = f"{currentYear}-{str(currentMonth).zfill(2)}"
-    currentPeriod_dt = dt.strptime(currentPeriod, "%Y-%m")
 
     period_start = pd.Timestamp(f"{period}-01 00:00:00.000")
 
@@ -420,7 +368,7 @@ def full_calculation(period):
     # else:
     #     period_end = pd.Timestamp(f"{next_period}-01 00:10:00.000")
 
-    full_range_var = pd.date_range(period_start, period_end, freq="10T")
+    full_range_var = pd.date_range(period_start, period_end, freq="10min")
 
     # ----------------------Sanity check---------------------------
     sanity_grd = grd.query(

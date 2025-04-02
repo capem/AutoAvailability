@@ -1,24 +1,7 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import pandas as pd
 
-# Your DataFrame
-results_df = pd.DataFrame(
-    {
-        ".": ["Du 2023_12_18 au 2023_12_24"],
-        "Indispo. SGRE énergie (%)": [3.73],
-        "Indispo. SGRE énergie (MWh)": [440.94],
-        "Indispo. SGRE temps (%)": [3.06],
-        "Indispo. SGRE temps (heures)": [672.75],
-        "Indispo. TAREC énergie (%)": [0.32],
-        "Indispo. TAREC énergie (MWh)": [38.04],
-        "Indispo. TAREC temps (%)": [1.11],
-        "Indispo. TAREC temps (heures)": [245.35],
-        "Vent moyen Mâts (m/s)": [6.83],
-        "Direction Moyenne Mâts (°)": [72.58],
-    }
-)
 
 
 def style_dataframe(df):
@@ -28,14 +11,18 @@ def style_dataframe(df):
         base_style
         + "color:rgb(56,58,66); font-family:'Segoe WPC', 'Segoe UI', sans-serif; font-size:14px; background-color:rgb(232,232,232);"
     )
-    header_style = base_style + "font-weight:bold; background-color:rgba(130,130,130,0.16);"
+    header_style = (
+        base_style + "font-weight:bold; background-color:rgba(130,130,130,0.16);"
+    )
     cell_style = base_style
 
     # Convert DataFrame to HTML
     styled_html = df.to_html(index=True, border=0)
 
     # Replace the opening table tag with styled version
-    styled_html = styled_html.replace('<table border="0" class="dataframe">', f'<table style="{table_style}">')
+    styled_html = styled_html.replace(
+        '<table border="0" class="dataframe">', f'<table style="{table_style}">'
+    )
 
     # Replace the thead and tbody tags with styled versions
     styled_html = styled_html.replace("<thead>", f'<thead style="{header_style}">')
@@ -53,7 +40,12 @@ def style_dataframe(df):
 
 
 def send_email(
-    df, receiver_email, subject, sender_email="s.atmani@tarec.ma", email_password="nimd dmbk ngbt yqza", cc_emails=None
+    df,
+    receiver_email,
+    subject,
+    sender_email="s.atmani@tarec.ma",
+    email_password="nimd dmbk ngbt yqza",
+    cc_emails=None,
 ):
     # Apply the style to your dataframe and convert to HTML
     html = style_dataframe(df)
@@ -81,20 +73,3 @@ def send_email(
     server.login(sender_email, email_password)
     server.send_message(message, from_addr=sender_email, to_addrs=receiver_email)
     server.quit()
-
-
-# Usage
-sender_email = "s.atmani@tarec.ma"
-receiver_email = "s.atmani@tarec.ma"
-subject = "Results DataFrame Test"
-email_password = "nimd dmbk ngbt yqza"
-
-# Example usage
-send_email(
-    df=results_df,
-    receiver_email="s.atmani@tarec.ma",
-    subject="Your Subject Here",
-    sender_email="s.atmani@tarec.ma",
-    email_password="nimd dmbk ngbt yqza",
-    cc_emails=["s.atmani@tarec.ma", "s.atmani@tarec.ma"],  # Optional CC emails
-)

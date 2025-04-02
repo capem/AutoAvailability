@@ -7,14 +7,10 @@ from datetime import timedelta
 import pandas as pd
 import time
 import threading
-import openpyxl.cell._writer
-import sqlalchemy_access.pyodbc
 
 # import sqlalchemy.dialects.access
 
-import download_wps_history
-
-import sql_alarms
+import data_exporter
 import calculation
 import hebdo_calc
 import email_send
@@ -136,11 +132,10 @@ if __name__ == "__main__":
     period_end_dt = yesterday.replace(hour=23, minute=50, second=0, microsecond=0)
     period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
 
-    logging.warning("download_wps_history")
-    [try_forever(download_wps_history.main, period.strftime("%Y-%m")) for period in period_range]
+    logging.warning("data_exporter")
+    # [try_forever(data_exporter.main, period.strftime("%Y-%m")) for period in period_range]
 
-    logging.warning("sql_alarms")
-    [try_forever(sql_alarms.main, period.strftime("%Y-%m")) for period in period_range]
+    # Alarm data is now exported by data_exporter
 
     logging.warning("calculation")
     # Loop over the period range and call the functions
@@ -150,7 +145,7 @@ if __name__ == "__main__":
         try_forever(results.to_pickle, f"./monthly_data/results/{period_month}.pkl")
 
     # Group and round the results
-    results_grouped = round(results.groupby("StationId").sum().reset_index(), 2)
+    results_grouped = results.groupby("StationId").sum(numeric_only=True).round(2).reset_index()
 
     # Extract columns only once
     columns = [

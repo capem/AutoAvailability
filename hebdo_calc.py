@@ -81,7 +81,7 @@ def main(period_range, period_start_dt, period_end_dt):
         df_exploi.loc[title, "Direction Moyenne Mâts (°)"] = mean_angle(results[wind_direction_cols].apply(mean_angle))
     df_exploi.columns.name = "."
 
-    return df_exploi.applymap(lambda x: "{:,.2f}".format(x))
+    return df_exploi.map(lambda x: "{:,.2f}".format(x))
 
 
 def Top15(period_range, period_start_dt, period_end_dt):
@@ -115,4 +115,4 @@ def Top15(period_range, period_start_dt, period_end_dt):
 
     df_Top15.columns.name = "."
 
-    return df_Top15.applymap(lambda x: "{:,.2f}".format(x))
+    return df_Top15.map(lambda x: "{:,.2f}".format(x))

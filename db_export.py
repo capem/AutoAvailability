@@ -225,7 +225,7 @@ class DBExporter:
             String of column names for the SQL query
         """
         if table_name == "tblSCMet":
-            return """TimeStamp, StationId, met_WindSpeedRot_mean, met_WinddirectionRot_mean, met_Pressure_mean, met_Temperature_mean"""
+            return """TimeStamp, StationId, met_WindSpeedRot_mean, met_WinddirectionRot_mean, met_Pressure_mean, met_TemperatureRot_mean"""
 
         elif table_name == "tblSCTurbine":
             return """TimeStamp, StationId, wtc_AcWindSp_mean, wtc_AcWindSp_stddev,

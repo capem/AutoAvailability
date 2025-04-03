@@ -235,7 +235,7 @@ class DBExporter:
             return """TimeStamp, StationId, wtc_ActPower_min, wtc_ActPower_max, wtc_ActPower_mean"""
 
         elif table_name == "tblSCTurCount":
-            return """TimeStamp, StationId, wtc_kWG1Tot_accum, wtc_kWG1TotE_accum, wtc_kWG1TotI_accum"""
+            return """TimeStamp, StationId, wtc_kWG1Tot_accum, wtc_kWG1TotE_accum, wtc_kWG1TotI_accum, wtc_BoostKWh_endvalue, wtc_BostkWhS_endvalue"""
 
         elif table_name == "tblSCTurDigiIn":
             return """TimeStamp, StationId, wtc_PowerRed_timeon"""

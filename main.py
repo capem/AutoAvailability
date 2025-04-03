@@ -34,13 +34,21 @@ def setup_logging(log_directory, log_filename):
     # File handler for WARNING and above
     file_handler = RotatingFileHandler(log_file_path, maxBytes=1e7, backupCount=5)
     file_handler.setLevel(logging.WARNING)  # Set to WARNING level
-    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]"))
+    file_handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]"
+        )
+    )
 
     # Console handler for INFO and above
-    console_handler = RichHandler(rich_tracebacks=True, show_time=False, show_path=False)
+    console_handler = RichHandler(
+        rich_tracebacks=True, show_time=False, show_path=False
+    )
     console_handler.setLevel(logging.INFO)  # Set to INFO level
     console_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]")
+        logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]"
+        )
     )
 
     # Add handlers to the logger
@@ -81,7 +89,9 @@ def try_forever(func, *args, **kwargs):
                 logging.error("Maximum duration exceeded. Stopping retries.")
                 break
 
-            logging.exception(f"Attempt {attempts}: An error occurred. Retrying in 30 seconds...")
+            logging.exception(
+                f"Attempt {attempts}: An error occurred. Retrying in 30 seconds..."
+            )
             time.sleep(30)
 
     # Send an email after failing
@@ -121,31 +131,40 @@ if __name__ == "__main__":
             yesterday = dt.strptime(args.yesterday, "%Y-%m-%d")
         except ValueError:
             # If the date format is incorrect, raise an error and exit
-            raise ValueError("The provided date is not in the correct format (YYYY-MM-DD).")
+            raise ValueError(
+                "The provided date is not in the correct format (YYYY-MM-DD)."
+            )
     else:
         # If no date is provided, set yesterday to the day before the current date
         yesterday = dt.today() - timedelta(days=1)
 
     period_month = yesterday.strftime("%Y-%m")
 
-    period_start_dt = yesterday.replace(hour=00, minute=00, second=0, microsecond=0) - timedelta(days=6)
+    period_start_dt = yesterday.replace(
+        hour=00, minute=00, second=0, microsecond=0
+    ) - timedelta(days=6)
     period_end_dt = yesterday.replace(hour=23, minute=50, second=0, microsecond=0)
     period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
 
     logging.warning("data_exporter")
-    # [try_forever(data_exporter.main, period.strftime("%Y-%m")) for period in period_range]
+    [
+        try_forever(data_exporter.main, period.strftime("%Y-%m"))
+        for period in period_range
+    ]
 
     # Alarm data is now exported by data_exporter
 
     logging.warning("calculation")
     # Loop over the period range and call the functions
     for period in period_range:
-        period_month = period.strftime('%Y-%m')
+        period_month = period.strftime("%Y-%m")
         results = try_forever(calculation.full_calculation, period_month)
         try_forever(results.to_pickle, f"./monthly_data/results/{period_month}.pkl")
 
     # Group and round the results
-    results_grouped = results.groupby("StationId").sum(numeric_only=True).round(2).reset_index()
+    results_grouped = (
+        results.groupby("StationId").sum(numeric_only=True).round(2).reset_index()
+    )
 
     # Extract columns only once
     columns = [
@@ -160,9 +179,18 @@ if __name__ == "__main__":
         "EL_wind_start",
         "EL_alarm_start",
     ]
-    Ep, EL, ELX, ELNX, EL_2006, EL_PowerRed, EL_Misassigned, EL_wind, EL_wind_start, EL_alarm_start = [
-        results_grouped[col] for col in columns
-    ]
+    (
+        Ep,
+        EL,
+        ELX,
+        ELNX,
+        EL_2006,
+        EL_PowerRed,
+        EL_Misassigned,
+        EL_wind,
+        EL_wind_start,
+        EL_alarm_start,
+    ) = [results_grouped[col] for col in columns]
 
     # Simplified calculations
     ELX_eq = ELX - EL_Misassigned
@@ -170,12 +198,16 @@ if __name__ == "__main__":
     Epot_eq = Ep + ELX_eq + ELNX_eq
 
     # Calculate MAA_brut and MAA_brut_mis
-    results_grouped["MAA_brut"] = 100 * (Ep + ELX) / (Ep + ELX + ELNX + EL_2006 + EL_PowerRed)
+    results_grouped["MAA_brut"] = (
+        100 * (Ep + ELX) / (Ep + ELX + ELNX + EL_2006 + EL_PowerRed)
+    )
     results_grouped["MAA_brut_mis"] = round(100 * (Ep + ELX_eq) / Epot_eq, 2)
 
     # Calculate MAA_indefni_adjusted
     total_EL_wind = EL_wind + EL_wind_start + EL_alarm_start
-    results_grouped["MAA_indefni_adjusted"] = 100 * (Ep + ELX) / (Ep + EL - total_EL_wind)
+    results_grouped["MAA_indefni_adjusted"] = (
+        100 * (Ep + ELX) / (Ep + EL - total_EL_wind)
+    )
 
     # Adjust index and save to CSV
     results_grouped.index += 1
@@ -184,8 +216,12 @@ if __name__ == "__main__":
     # results = pd.read_pickle(f"./monthly_data/results/{period_month}.pkl")
 
     logging.warning("hebdo_calc")
-    df_exploi = try_forever(hebdo_calc.main, period_range, period_start_dt, period_end_dt)
-    df_Top15 = try_forever(hebdo_calc.Top15, period_range, period_start_dt, period_end_dt)
+    df_exploi = try_forever(
+        hebdo_calc.main, period_range, period_start_dt, period_end_dt
+    )
+    df_Top15 = try_forever(
+        hebdo_calc.Top15, period_range, period_start_dt, period_end_dt
+    )
 
     title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
 

@@ -3,7 +3,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 
-
 def style_dataframe(df):
     # Inline styles to match the provided table
     base_style = "border-spacing:0px; border-collapse:collapse; vertical-align:middle; text-align:right; padding:4px 8px; border:none;"

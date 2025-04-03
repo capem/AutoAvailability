@@ -1,0 +1,11 @@
+.vscode/
+logs/
+dist/
+build/
+# exclude everything in every folder
+/monthly_data/**/*.*
+
+
+# include only .gitkeep files
+!/monthly_data/**/*.gitkeep
+__pycache__/

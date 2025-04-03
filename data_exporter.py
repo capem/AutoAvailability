@@ -98,13 +98,22 @@ def export_data_for_period(period, file_types=None):
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {}
             for file_type in file_types:
+                # Check if the export already exists
+                zip_path = f"./monthly_data/exports/{file_type.upper()}/{period}.zip"
+                if os.path.exists(zip_path):
+                    logger.info(f"Skipping {file_type.upper()} for {period}: Output file {zip_path} already exists.")
+                    progress.update(tasks[file_type], completed=100, description=f"Exporting {file_type.upper()} - skipped (exists)")
+                    results[file_type] = True  # Mark as success since it's already done/skipped
+                    continue # Skip to the next file_type
+
+                # If not skipped, proceed with export
                 # Update progress to indicate start
                 progress.update(tasks[file_type], completed=10, description=f"Exporting {file_type.upper()} - started")
                 
                 # Submit export task to executor
                 futures[file_type] = executor.submit(
-                    export_and_archive_tables, 
-                    period, 
+                    export_and_archive_tables,
+                    period,
                     [file_type]
                 )
             

@@ -128,7 +128,7 @@ class DBExporter:
         """
         self.connection_pool = connection_pool
 
-    def construct_query(period_start, period_end, alarms_0_1):
+    def construct_query(self, period_start, period_end, alarms_0_1):
         # Constructing the IN clause for the SQL query
         query = f"""
         SET NOCOUNT ON;

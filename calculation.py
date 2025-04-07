@@ -57,7 +57,7 @@ def cascade(df):
 def apply_cascade(result_sum):
     # Sort by alarm ID
     result_sum.sort_values(["TimeOn", "ID"], inplace=True)
-    df = result_sum.groupby("StationNr", group_keys=True).apply(cascade)
+    df = result_sum.groupby("StationNr", group_keys=True).apply(cascade, include_groups=False)
 
     mask_root = df.TimeOn.values >= df.TimeOffMax.values
     mask_children = (df.TimeOn.values < df.TimeOffMax.values) & (df.TimeOff.values > df.TimeOffMax.values)
@@ -69,7 +69,7 @@ def apply_cascade(result_sum):
 
     # df.drop(columns=["TimeOffMax"], inplace=True)
 
-    df.reset_index(inplace=True, drop=True)
+    df.reset_index(inplace=True)
 
     TimeOff = df.TimeOff
     NewTimeOn = df.NewTimeOn
@@ -204,8 +204,6 @@ def full_range(df, full_range_var):
     new_df = pd.DataFrame(index=full_range_var)
 
     df = df.set_index("TimeStamp")
-    df = df.drop("StationNr", axis=1)
-
     return new_df.join(df, how="left")
 
 
@@ -546,7 +544,7 @@ def full_calculation(period):
 
     alarms_binned = (
         alarms_binned.groupby("StationNr", group_keys=True)
-        .apply(lambda df: full_range(df, full_range_var))
+        .apply(lambda df: full_range(df, full_range_var), include_groups=False)
         .reset_index()
         .rename(
             columns={
@@ -775,7 +773,7 @@ def full_calculation(period):
 
         return df
 
-    results_final = results_final.groupby("StationId", group_keys=False).apply(lowind)
+    results_final = results_final.groupby("StationId", group_keys=False).apply(lowind, include_groups=False)
 
     results_final["EL_indefini_left"] = results_final["EL_indefini"].fillna(0) - (
         results_final["EL_wind"].fillna(0)
@@ -822,4 +820,4 @@ def full_calculation(period):
 
 
 if __name__ == "__main__":
-    full_calculation("2023-10")
+    full_calculation("2025-04")

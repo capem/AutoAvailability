@@ -723,7 +723,7 @@ def full_calculation(period):
 
     results_final["EL_indefini"] = results_final["EL_indefini"].fillna(0) - results_final["EL_PowerRed"]
 
-    results_final["EL_PowerRed"].fillna(0, inplace=True)
+    results_final["EL_PowerRed"] = results_final["EL_PowerRed"].fillna(0)
 
     # -------------------------------------------------------------------------
 
@@ -804,7 +804,7 @@ def full_calculation(period):
 
     results_final.loc[EL_Misassigned_mask, "EL_Misassigned"] = results_final.loc[EL_Misassigned_mask, "ELX"]
 
-    results_final["EL_Misassigned"].fillna(0, inplace=True)
+    results_final["EL_Misassigned"] = results_final["EL_Misassigned"].fillna(0)
     # -------------------------------------------------------------------------
 
     columns_toround = list(set(results_final.columns) - set(("StationId", "TimeStamp", "UK Text")))

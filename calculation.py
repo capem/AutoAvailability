@@ -606,8 +606,8 @@ def full_calculation(period):
 
     # merging last dataframe with curtailement
     results = pd.merge(results, din, on=["StationId", "TimeStamp"], how="left")
+    results = results.infer_objects()
     results["Duration 2006(s)"] = results["Duration 2006(s)"].fillna(0)
-    # results = results.fillna(0)
 
     # -------- operational turbines mask --------------------------------------
     mask_n = (
@@ -753,6 +753,7 @@ def full_calculation(period):
             )
         ) & (df["EL_indefini"] > 0)
 
+        mask_1 = mask_1.astype('boolean')
         mask_2 = mask_1.shift().bfill()
 
         df.loc[mask_1, "EL_wind"] = df.loc[mask_1, "EL_indefini"].fillna(0)

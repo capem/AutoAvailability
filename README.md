@@ -1,114 +1,72 @@
-# Data Export and Processing System
+# AutoTasks - Wind Farm Data Processing and Analysis
 
-This project handles the export, archiving, and processing of wind turbine data from SQL Server databases.
+AutoTasks is a comprehensive data processing and analysis system for wind farm operations. It automates the extraction, processing, and reporting of operational data from wind turbines, providing insights into performance, availability, and energy production.
 
-## Architecture
+## Features
 
-The system follows a modular approach with these key components:
+- **Automated Data Export**: Extracts data from SQL Server databases and archives it for processing
+- **Data Preservation**: Maintains deleted database records in exported files
+- **Availability Calculation**: Computes various availability metrics for wind turbines
+- **Energy Loss Analysis**: Calculates and categorizes energy losses
+- **Weekly Reporting**: Generates weekly reports on turbine performance and availability
+- **Email Notifications**: Automatically sends reports and notifications via email
+- **Cross-Month Processing**: Handles 7-day periods that span across two months
 
-1. **Database Export Module** (`db_export.py`):
-   - Connection pool management
-   - Table schema extraction
-   - MDB file creation
-   - Data export from SQL Server to MDB
-   - ZIP archive creation
 
-2. **Data Export CLI** (`data_exporter.py`):
-   - Command-line interface for data export
-   - Parallel processing of export tasks
-   - Progress reporting
-   - Replaces the previous HTTP download functionality
+## Usage
 
-3. **Calculation Module** (`calculation.py`):
-   - Processes exported data
-   - Handles ZIP extraction
-   - Performs calculations and analysis
+### Basic Usage
 
-## Using the System
-
-### Exporting Data
-
-To export data for a specific period:
-
-```bash
-python data_exporter.py 2023-12
-```
-
-To export only specific data types:
-
-```bash
-python data_exporter.py 2023-12 --types met grd tur
-```
-
-### Running Calculations
-
-The calculation system automatically uses the exported data:
-
-```bash
-python calculation.py
-```
-
-## Migration Guide
-
-This system replaces the previous HTTP download approach with direct database exports:
-
-1. **Transition Period**:
-   - Both systems can run in parallel during testing
-   - Generated MDB files are fully compatible with the existing calculation pipeline
-
-2. **Full Migration**:
-   - After validation, remove the `download_wps_history.py` script
-   - Update any automation scripts to use `data_exporter.py` instead
-
-3. **Validation Process**:
-   - Export data for a known period using both the old and new methods
-   - Compare MD5 checksums of the generated MDB files
-   - Run calculations on both datasets and compare results
-
-## Technical Details
-
-### Database Connection
-
-The system uses connection pooling to efficiently manage database connections:
-- Reuses existing connections when possible
-- Automatically recovers from broken connections
-- Limits the number of concurrent connections
-
-### File Structure
+Run the main script to process data for the previous day and the preceding 6 days:
 
 ```
-monthly_data/
-├── exports/           # Generated MDB files
-│   ├── MET/
-│   ├── TUR/
-│   └── ...
-├── uploads/           # ZIP archives for calculation.py
-│   ├── MET/
-│   ├── TUR/
-│   └── ...
-└── results/           # Calculation results
+python main.py
 ```
 
-### Data Types and Tables
+### Command Line Arguments
 
-| Type | SQL Server Table | Description |
-|------|------------------|-------------|
-| met  | tblSCMet         | Meteorological data |
-| tur  | tblSCTurbine     | Turbine data |
-| grd  | tblSCTurGrid     | Grid data |
-| cnt  | tblSCTurCount    | Counter data |
-| din  | tblSCTurDigiIn   | Digital input data |
-| sum  | tblAlarmLog      | Alarm data |
+- `-y, --yesterday YYYY-MM-DD`: Specify a custom date instead of using yesterday
+- `--update-mode {check,append,force-overwrite}`: Control how existing data is handled
+  - `check`: Report changes without modifying existing data
+  - `append`: Update/append while preserving deleted records (default)
+  - `force-overwrite`: Export fresh data, overwriting existing files
 
-## Error Handling
+### Examples
 
-The system includes comprehensive error handling:
-- Logging for all database operations
-- Automatic retry for transient errors
-- Graceful degradation when data is unavailable
+Process data for a specific date:
+```
+python main.py -y 2023-12-31
+```
+
+Force a complete refresh of data:
+```
+python main.py --update-mode force-overwrite
+```
+
+## Project Structure
+
+- `main.py`: Entry point for the application
+- `data_exporter.py`: Handles data export from SQL Server
+- `db_export.py`: Low-level database export functionality
+- `calculation.py`: Performs calculations on exported data
+- `hebdo_calc.py`: Generates weekly calculations and reports
+- `email_send.py`: Handles email notifications
+- `monthly_data/`: Directory for storing exported and processed data
+  - `exports/`: Raw exports from the database
+  - `uploads/`: Processed data files ready for analysis
+  - `results/`: Calculation results and reports
+- `logs/`: Application logs
+
+## Configuration
+
+Database connection parameters are defined in `db_export.py`:
+Email configuration is defined in `email_send.py`.
 
 ## Dependencies
 
-- pyodbc
-- pandas
-- rich (for progress display)
+- pandas: Data manipulation and analysis
+- numpy: Numerical computing
+- pyodbc: Database connectivity
+- scipy: Scientific computing
+- rich: Terminal formatting and logging
+- smtplib: Email functionality

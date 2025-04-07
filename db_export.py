@@ -253,7 +253,7 @@ class DBExporter:
                     SET NOCOUNT ON;
                     SELECT
                         COUNT_BIG(*),
-                        CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS BIGINT))
+                        CHECKSUM_AGG(BINARY_CHECKSUM({checksum_cols}))
                     FROM [WpsHistory].[dbo].[tblAlarmLog]
                     {where_clause}
                     """
@@ -264,7 +264,7 @@ class DBExporter:
                     SET NOCOUNT ON;
                     SELECT
                         COUNT_BIG(*),
-                        CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS BIGINT))
+                        CHECKSUM_AGG(BINARY_CHECKSUM({checksum_cols}))
                     FROM {table_name}
                     {where_clause}
                     """

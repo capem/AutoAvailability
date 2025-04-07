@@ -80,7 +80,7 @@ def try_forever(func, *args, **kwargs):
     while attempts < max_attempts:
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             attempts += 1
             current_time = dt.now()
             elapsed_time = (current_time - start_time).total_seconds()
@@ -114,13 +114,21 @@ def send_failure_email():
 if __name__ == "__main__":
     setup_logging("./logs", "hebdo.log")
     # Define and parse the command-line argument
-    parser = argparse.ArgumentParser(description='Process the "yesterday" date.')
+    parser = argparse.ArgumentParser(
+        description="Process weekly data, exporting and calculating."
+    )
     parser.add_argument(
         "-y",
         "--yesterday",
         type=str,
         help='Optional date in YYYY-MM-DD format that overwrites the "yesterday" variable.',
         default=None,
+    )
+    parser.add_argument(
+        "--update-mode",
+        choices=["check", "append", "force-overwrite"],
+        default="append",  # Defaulting to 'append' as decided
+        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data).",
     )
     args = parser.parse_args()
 
@@ -147,10 +155,20 @@ if __name__ == "__main__":
     period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
 
     logging.warning("data_exporter")
-    [
-        try_forever(data_exporter.main, period.strftime("%Y-%m"))
-        for period in period_range
-    ]
+    # Call data_exporter for each required month, passing the update mode
+    for period in period_range:
+        period_str = period.strftime("%Y-%m")
+        logging.info(
+            f"Running data export for period {period_str} with mode '{args.update_mode}'"
+        )
+        # Use lambda to pass extra arguments to the function called by try_forever
+        try_forever(
+            lambda p, mode: data_exporter.export_and_archive_tables(
+                p, update_mode=mode
+            ),
+            period_str,  # First arg for the lambda (p)
+            args.update_mode,  # Second arg for the lambda (mode)
+        )
 
     # Alarm data is now exported by data_exporter
 

@@ -3,7 +3,7 @@ Data Exporter Module
 
 This module replaces the HTTP download functionality in download_wps_history.py
 with local database export functionality. It exports data from SQL Server to
-MDB files and creates ZIP archives for consumption by calculation.py.
+csv files and creates ZIP archives for consumption by calculation.py.
 """
 
 import os

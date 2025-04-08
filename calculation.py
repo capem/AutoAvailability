@@ -773,7 +773,7 @@ def full_calculation(period):
 
         return df
 
-    results_final = results_final.groupby("StationId", group_keys=False).apply(lowind, include_groups=False)
+    results_final = results_final.groupby("StationId", group_keys=False).apply(lowind, include_groups=True)
 
     results_final["EL_indefini_left"] = results_final["EL_indefini"].fillna(0) - (
         results_final["EL_wind"].fillna(0)

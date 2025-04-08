@@ -1,5 +1,3 @@
-# AccessDatabaseEngine_x64.exe /passive
-# --hidden-import=sqlalchemy.dialects.access
 # pyinstaller AutoHebdo.py -y
 import argparse
 from datetime import datetime as dt
@@ -7,8 +5,6 @@ from datetime import timedelta
 import pandas as pd
 import time
 import threading
-
-# import sqlalchemy.dialects.access
 
 import data_exporter
 import calculation

@@ -6,6 +6,7 @@ AutoTasks is a comprehensive data processing and analysis system for wind farm o
 
 - **Automated Data Export**: Extracts data from SQL Server databases and archives it for processing
 - **Data Preservation**: Maintains deleted database records in exported files
+- **Manual Alarm Adjustments**: Allows manual setting of timeoff values for alarms
 - **Availability Calculation**: Computes various availability metrics for wind turbines
 - **Energy Loss Analysis**: Calculates and categorizes energy losses
 - **Weekly Reporting**: Generates weekly reports on turbine performance and availability
@@ -43,6 +44,35 @@ Force a complete refresh of data:
 python main.py --update-mode force-overwrite
 ```
 
+### Manual Alarm Adjustments
+
+The system allows you to manually set timeoff values for alarms that have no timeoff in the database. This is useful for correcting data issues or handling special cases.
+
+List all current manual adjustments:
+```
+python adjust_alarms.py list
+```
+
+Add a new manual adjustment:
+```
+python adjust_alarms.py add <alarm_id> <alarm_code> <station_nr> "<time_on>" "<time_off>" --notes "Optional notes"
+```
+
+Example:
+```
+python adjust_alarms.py add 12345 1005 2307405 "2023-01-15 08:30:00" "2023-01-15 14:45:00" --notes "Manually adjusted due to missing timeoff"
+```
+
+Update an existing adjustment:
+```
+python adjust_alarms.py update <alarm_id> --time_off "<new_time_off>" --notes "Updated notes"
+```
+
+Remove an adjustment:
+```
+python adjust_alarms.py remove <alarm_id>
+```
+
 ## Project Structure
 
 - `main.py`: Entry point for the application
@@ -51,6 +81,8 @@ python main.py --update-mode force-overwrite
 - `calculation.py`: Performs calculations on exported data
 - `hebdo_calc.py`: Generates weekly calculations and reports
 - `email_send.py`: Handles email notifications
+- `adjust_alarms.py`: Tool for managing manual alarm adjustments
+- `manual_adjustments.json`: Stores manual alarm timeoff adjustments
 - `monthly_data/`: Directory for storing exported and processed data
   - `exports/`: Raw exports from the database
   - `uploads/`: Processed data files ready for analysis

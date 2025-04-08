@@ -44,6 +44,9 @@ BASE_EXPORT_PATH = "./monthly_data/exports"
 BASE_UPLOAD_PATH = "./monthly_data/uploads"
 METADATA_EXTENSION = ".meta.json"  # Added for metadata files
 
+# Path to manual adjustments file
+MANUAL_ADJUSTMENTS_FILE = "manual_adjustments.json"
+
 
 class ConnectionPool:
     """A simple connection pool for reusing database connections"""
@@ -130,6 +133,7 @@ class DBExporter:
         """
         self.connection_pool = connection_pool
         self._load_error_list()  # Load error list once during initialization
+        self.manual_adjustments = self._load_manual_adjustments()  # Load manual adjustments
 
     def _load_error_list(self):
         """Loads and prepares the alarm error list from the Excel file."""
@@ -154,6 +158,24 @@ class DBExporter:
         except Exception as e:
             logger.error(f"Failed to load or process error list from Excel: {e}")
             self.alarms_0_1 = pd.Series(dtype=int)  # Ensure it's defined even on error
+
+    def _load_manual_adjustments(self):
+        """Loads manual alarm adjustments from the JSON file."""
+        try:
+            if not os.path.exists(MANUAL_ADJUSTMENTS_FILE):
+                logger.info(f"Manual adjustments file not found at: {MANUAL_ADJUSTMENTS_FILE}. Creating empty file.")
+                # Create the file with an empty adjustments list if it doesn't exist
+                with open(MANUAL_ADJUSTMENTS_FILE, "w") as f:
+                    json.dump({"adjustments": []}, f, indent=4)
+                return {"adjustments": []}
+
+            with open(MANUAL_ADJUSTMENTS_FILE, "r") as f:
+                adjustments = json.load(f)
+            logger.info(f"Loaded {len(adjustments.get('adjustments', []))} manual adjustments from {MANUAL_ADJUSTMENTS_FILE}")
+            return adjustments
+        except Exception as e:
+            logger.error(f"Failed to load or process manual adjustments: {e}")
+            return {"adjustments": []}  # Return empty adjustments on error
 
     def _get_metadata_path(self, csv_path):
         """Constructs the metadata file path from the CSV path."""
@@ -334,10 +356,51 @@ class DBExporter:
                 if "TimeOff" in df.columns:
                     df["TimeOff"] = pd.to_datetime(df["TimeOff"])
 
+                # Apply manual adjustments if this is the alarm table
+                if table_name == "tblAlarmLog" and not df.empty:
+                    df = self._apply_manual_adjustments(df)
+
                 return df
         except Exception as e:
             logger.error(f"Failed to fetch data for {table_name}: {e}")
             return pd.DataFrame()  # Return empty DataFrame on error
+
+    def _apply_manual_adjustments(self, df):
+        """Apply manual adjustments to alarm data.
+
+        Args:
+            df: DataFrame containing alarm data
+
+        Returns:
+            DataFrame with manual adjustments applied
+        """
+        if not self.manual_adjustments.get("adjustments"):
+            return df  # No adjustments to apply
+
+        # Create a copy to avoid modifying the original DataFrame
+        df_adjusted = df.copy()
+
+        # Track how many adjustments were applied
+        adjustments_applied = 0
+
+        # Apply each manual adjustment
+        for adjustment in self.manual_adjustments["adjustments"]:
+            # Find the alarm by ID
+            mask = df_adjusted["ID"] == adjustment["id"]
+            if mask.any():
+                # Convert the time_off string to datetime
+                try:
+                    time_off = pd.to_datetime(adjustment["time_off"])
+                    # Apply the adjustment
+                    df_adjusted.loc[mask, "TimeOff"] = time_off
+                    adjustments_applied += 1
+                except Exception as e:
+                    logger.error(f"Failed to apply adjustment for alarm ID {adjustment['id']}: {e}")
+
+        if adjustments_applied > 0:
+            logger.info(f"Applied {adjustments_applied} manual adjustments to alarm data")
+
+        return df_adjusted
 
     def _hash_row(self, row, columns_to_hash):
         """Creates a hash for a pandas Series based on specified columns."""

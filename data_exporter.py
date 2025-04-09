@@ -1013,6 +1013,44 @@ def main_export_flow(
     logger.info("--- Export Process Finished ---")
 
 
+# --- Helper Functions ---
+
+def generate_period_range(start_period, end_period=None):
+    """
+    Generate a list of periods (YYYY-MM) from start_period to end_period (inclusive).
+    If end_period is None, returns a list with only start_period.
+
+    Args:
+        start_period (str): Start period in YYYY-MM format
+        end_period (str, optional): End period in YYYY-MM format. Defaults to None.
+
+    Returns:
+        list: List of periods in YYYY-MM format
+    """
+    # If no end period, return just the start period
+    if not end_period:
+        return [start_period]
+
+    # Parse start and end dates
+    start_date = datetime.strptime(start_period, "%Y-%m")
+    end_date = datetime.strptime(end_period, "%Y-%m")
+
+    # Ensure start date is before or equal to end date
+    if start_date > end_date:
+        logger.error(f"Start period {start_period} is after end period {end_period}")
+        return []
+
+    # Generate list of periods
+    periods = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        periods.append(current_date.strftime("%Y-%m"))
+        # Move to next month
+        current_date = current_date.replace(day=1) + relativedelta(months=1)
+
+    return periods
+
 # --- Standalone Execution ---
 
 if __name__ == "__main__":
@@ -1020,11 +1058,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Export data from database to CSV files"
     )
-    parser.add_argument("period", help="Period in YYYY-MM format")
+    parser.add_argument(
+        "--period-start",
+        required=True,
+        help="Start period in YYYY-MM format (e.g., 2020-01)"
+    )
+    parser.add_argument(
+        "--period-end",
+        help="End period in YYYY-MM format (e.g., 2024-12). If provided, exports all periods from start to end inclusive.",
+    )
     parser.add_argument(
         "--types",
         nargs="+",
-        help="Specific file types to export (e.g., met din sum). Exports all if omitted.",
+        help="Specific file types to export (e.g., met din sum). Exports all types if omitted.",
     )
     parser.add_argument(
         "--update-mode",
@@ -1037,10 +1083,21 @@ if __name__ == "__main__":
 
     # Validate period format (basic check)
     try:
-        datetime.strptime(args.period, "%Y-%m")
+        datetime.strptime(args.period_start, "%Y-%m")
+        if args.period_end:
+            datetime.strptime(args.period_end, "%Y-%m")
     except ValueError:
-        logger.error("Invalid period format. Please use YYYY-MM.")
+        logger.error("Invalid period format. Please use YYYY-MM format (e.g., 2023-01).")
         exit(1)
 
-    # Run the main export flow
-    main_export_flow(args.period, args.types, args.update_mode)
+    # Generate list of periods to process
+    periods = generate_period_range(args.period_start, args.period_end)
+    if not periods:
+        logger.error("No valid periods to process.")
+        exit(1)
+
+    # Process each period
+    for period in periods:
+        logger.info(f"\n=== Processing period: {period} ===")
+        # Run the main export flow for this period
+        main_export_flow(period, args.types, args.update_mode)

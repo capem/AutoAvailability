@@ -12,6 +12,7 @@ import calculation
 import hebdo_calc
 import email_send
 import logger_config
+import results_grouper
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -139,62 +140,12 @@ if __name__ == "__main__":
     # Loop over the period range and call the functions
     for period in period_range:
         period_month = period.strftime("%Y-%m")
+        # Calculate results for this period
         results = try_forever(calculation.full_calculation, period_month)
         try_forever(results.to_pickle, f"./monthly_data/results/{period_month}.pkl")
 
-    # Group and round the results
-    results_grouped = (
-        results.groupby("StationId").sum(numeric_only=True).round(2).reset_index()
-    )
-
-    # Extract columns only once
-    columns = [
-        "wtc_kWG1TotE_accum",
-        "EL",
-        "ELX",
-        "ELNX",
-        "EL_2006",
-        "EL_PowerRed",
-        "EL_Misassigned",
-        "EL_wind",
-        "EL_wind_start",
-        "EL_alarm_start",
-    ]
-    (
-        Ep,
-        EL,
-        ELX,
-        ELNX,
-        EL_2006,
-        EL_PowerRed,
-        EL_Misassigned,
-        EL_wind,
-        EL_wind_start,
-        EL_alarm_start,
-    ) = [results_grouped[col] for col in columns]
-
-    # Simplified calculations
-    ELX_eq = ELX - EL_Misassigned
-    ELNX_eq = ELNX + EL_2006 + EL_PowerRed + EL_Misassigned
-    Epot_eq = Ep + ELX_eq + ELNX_eq
-
-    # Calculate MAA_brut and MAA_brut_mis
-    results_grouped["MAA_brut"] = (
-        100 * (Ep + ELX) / (Ep + ELX + ELNX + EL_2006 + EL_PowerRed)
-    )
-    results_grouped["MAA_brut_mis"] = round(100 * (Ep + ELX_eq) / Epot_eq, 2)
-
-    # Calculate MAA_indefni_adjusted
-    total_EL_wind = EL_wind + EL_wind_start + EL_alarm_start
-    results_grouped["MAA_indefni_adjusted"] = (
-        100 * (Ep + ELX) / (Ep + EL - total_EL_wind)
-    )
-
-    # Adjust index and save to CSV
-    results_grouped.index += 1
-    csv_filename = f"./monthly_data/results/Grouped_Results/grouped_{period_month}-Availability.csv"
-    results_grouped.to_csv(csv_filename, decimal=",", sep=",")
-    # results = pd.read_pickle(f"./monthly_data/results/{period_month}.pkl")
+        # Process and save grouped results for this period
+        try_forever(results_grouper.process_grouped_results, results, period_month)
 
     logger.info("Starting weekly calculation process")
     df_exploi = try_forever(

@@ -17,13 +17,13 @@ import hashlib
 from contextlib import contextmanager
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from rich.console import Console
 from rich.progress import (
     BarColumn,
     TextColumn,
     Progress,
     TimeRemainingColumn,
 )
+from sqlalchemy import create_engine
 
 # Import centralized logging
 import logger_config
@@ -97,7 +97,28 @@ class ConnectionPool:
         """Initialize the connection pool"""
         self.pool = queue.Queue(max_connections)
         self.size = max_connections
+        self.engine = self._create_sqlalchemy_engine()
         self._create_connections()
+
+    def _create_sqlalchemy_engine(self):
+        """Create a SQLAlchemy engine for database connections"""
+        connection_string = (
+            f"DRIVER={DB_CONFIG['driver']};"
+            f"SERVER={DB_CONFIG['server']};"
+            f"DATABASE={DB_CONFIG['database']};"
+            f"UID={DB_CONFIG['username']};"
+            f"PWD={DB_CONFIG['password']}"
+        )
+        try:
+            # Create SQLAlchemy engine with pyodbc connection
+            connection_url = f"mssql+pyodbc:///?odbc_connect={connection_string}"
+            engine = create_engine(connection_url, fast_executemany=True)
+            logger.debug("SQLAlchemy engine created successfully.")
+            return engine
+        except Exception as e:
+            logger.error(f"Failed to create SQLAlchemy engine: {str(e)}")
+            # Still return None to allow fallback to direct pyodbc if needed
+            return None
 
     def _create_connections(self):
         """Create initial connections and add them to the pool"""
@@ -116,10 +137,17 @@ class ConnectionPool:
             f"PWD={DB_CONFIG['password']}"
         )
         try:
-            conn = pyodbc.connect(connection_string, timeout=10)  # Added timeout
-            logger.debug("Database connection created successfully.")
-            return conn
-        except pyodbc.Error as e:
+            # Try to use the engine's connection if available
+            if self.engine is not None:
+                conn = self.engine.connect().connection
+                logger.debug("Database connection created from SQLAlchemy engine.")
+                return conn
+            else:
+                # Fallback to direct pyodbc connection
+                conn = pyodbc.connect(connection_string, timeout=10)  # Added timeout
+                logger.debug("Database connection created directly with pyodbc.")
+                return conn
+        except Exception as e:
             logger.error(f"Failed to create database connection: {str(e)}")
             # Do not raise here, allow pool creation to potentially succeed with fewer connections
             return None  # Indicate failure
@@ -292,71 +320,96 @@ class DBExporter:
         checksum_cols = self._get_checksum_columns(table_name)
 
         try:
-            with self.connection_pool.get_connection() as conn:
-                if table_name == "tblAlarmLog":
-                    if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
-                        logger.warning(
-                            "alarms_0_1 not loaded or empty for tblAlarmLog check. Attempting load."
-                        )
-                        self._load_error_list()
-                        if self.alarms_0_1.empty:
-                            logger.error(
-                                "Failed to load alarms_0_1 for tblAlarmLog check."
-                            )
-                            return None, None
-
-                    alarm_codes_tuple = tuple(self.alarms_0_1.tolist())
-                    if not alarm_codes_tuple:
-                        alarm_codes_tuple = ("NULL",)  # Avoid SQL syntax error
-
-                    where_clause = f"""
-                    WHERE ([Alarmcode] <> 50100)
-                    AND (
-                        ([TimeOff] BETWEEN '{period_start}' AND '{period_end}')
-                        OR ([TimeOn] BETWEEN '{period_start}' AND '{period_end}')
-                        OR ([TimeOn] <= '{period_start}' AND [TimeOff] >= '{period_end}')
-                        OR ([TimeOff] IS NULL AND [Alarmcode] IN {alarm_codes_tuple})
-                    )
-                    """
-                    query = f"""
-                    SET NOCOUNT ON;
-                    SELECT
-                        COUNT_BIG(*),
-                        CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS INT)) -- Cast needed for CHECKSUM_AGG
-                    FROM [WpsHistory].[dbo].[tblAlarmLog]
-                    {where_clause}
-                    """
-                else:
-                    where_clause = f"WHERE TimeStamp >= '{period_start}' AND TimeStamp < '{period_end}'"
-                    query = f"""
-                    SET NOCOUNT ON;
-                    SELECT
-                        COUNT_BIG(*),
-                        CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS INT)) -- Cast needed
-                    FROM {table_name}
-                    {where_clause}
-                    """
-
-                logger.debug(
-                    f"Executing state check query for {table_name}"
-                )  #: {query}") # Hide query details
-                cursor = conn.cursor()
-                cursor.execute(query)
-                result = cursor.fetchone()
-                cursor.close()
-
-                if result:
-                    count = result[0]
-                    checksum_agg = result[1] if result[1] is not None else 0
-                    logger.debug(  # Changed to debug
-                        f"DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
-                    )
-                    return count, checksum_agg
-                else:
+            # Prepare the query based on table type
+            if table_name == "tblAlarmLog":
+                if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
                     logger.warning(
-                        f"Could not retrieve state for {table_name} for period."
+                        "alarms_0_1 not loaded or empty for tblAlarmLog check. Attempting load."
                     )
+                    self._load_error_list()
+                    if self.alarms_0_1.empty:
+                        logger.error(
+                            "Failed to load alarms_0_1 for tblAlarmLog check."
+                        )
+                        return None, None
+
+                alarm_codes_tuple = tuple(self.alarms_0_1.tolist())
+                if not alarm_codes_tuple:
+                    alarm_codes_tuple = ("NULL",)  # Avoid SQL syntax error
+
+                where_clause = f"""
+                WHERE ([Alarmcode] <> 50100)
+                AND (
+                    ([TimeOff] BETWEEN '{period_start}' AND '{period_end}')
+                    OR ([TimeOn] BETWEEN '{period_start}' AND '{period_end}')
+                    OR ([TimeOn] <= '{period_start}' AND [TimeOff] >= '{period_end}')
+                    OR ([TimeOff] IS NULL AND [Alarmcode] IN {alarm_codes_tuple})
+                )
+                """
+                query = f"""
+                SET NOCOUNT ON;
+                SELECT
+                    COUNT_BIG(*),
+                    CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS INT)) -- Cast needed for CHECKSUM_AGG
+                FROM [WpsHistory].[dbo].[tblAlarmLog]
+                {where_clause}
+                """
+            else:
+                where_clause = f"WHERE TimeStamp >= '{period_start}' AND TimeStamp < '{period_end}'"
+                query = f"""
+                SET NOCOUNT ON;
+                SELECT
+                    COUNT_BIG(*),
+                    CHECKSUM_AGG(CAST(BINARY_CHECKSUM({checksum_cols}) AS INT)) -- Cast needed
+                FROM {table_name}
+                {where_clause}
+                """
+
+            logger.debug(f"Executing state check query for {table_name}")  #: {query}") # Hide query details
+
+            # Use SQLAlchemy engine if available, otherwise fall back to connection pool
+            if hasattr(self.connection_pool, 'engine') and self.connection_pool.engine is not None:
+                # Use SQLAlchemy engine
+                connection = self.connection_pool.engine.raw_connection()
+                try:
+                    cursor = connection.cursor()
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+                    cursor.close()
+                    connection.close()
+
+                    if result:
+                        count = result[0]
+                        checksum_agg = result[1] if result[1] is not None else 0
+                        logger.debug(  # Changed to debug
+                            f"DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
+                        )
+                        return count, checksum_agg
+                    else:
+                        logger.warning(f"Could not retrieve state for {table_name} for period.")
+                        return None, None
+                except Exception as e:
+                    logger.error(f"Error executing query with SQLAlchemy engine: {e}")
+                    connection.close()
                     return None, None
+            else:
+                # Fall back to connection pool
+                with self.connection_pool.get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+                    cursor.close()
+
+                    if result:
+                        count = result[0]
+                        checksum_agg = result[1] if result[1] is not None else 0
+                        logger.debug(  # Changed to debug
+                            f"DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
+                        )
+                        return count, checksum_agg
+                    else:
+                        logger.warning(f"Could not retrieve state for {table_name} for period.")
+                        return None, None
 
         except pyodbc.Error as e:
             logger.error(f"Database error during state check for {table_name}: {e}")
@@ -369,7 +422,9 @@ class DBExporter:
         """Fetches the full dataset from the DB for the given table and period."""
         query = ""
         try:
-            with self.connection_pool.get_connection() as conn:
+            # Use SQLAlchemy engine if available, otherwise fall back to connection pool
+            if hasattr(self.connection_pool, 'engine') and self.connection_pool.engine is not None:
+                # Use SQLAlchemy engine directly with pandas
                 if table_name == "tblAlarmLog":
                     if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
                         self._load_error_list()
@@ -391,14 +446,42 @@ class DBExporter:
                 logger.info(
                     f"Fetching data for {table_name} ({period_start} to {period_end})"
                 )
-                df = pd.read_sql(query, conn)
-                logger.info(f"Fetched {len(df)} rows from DB for {table_name}")
+                # Use SQLAlchemy engine directly with pandas
+                df = pd.read_sql(query, self.connection_pool.engine)
+                logger.info(f"Fetched {len(df)} rows from DB for {table_name} using SQLAlchemy engine")
+            else:
+                # Fall back to using the connection pool if engine is not available
+                with self.connection_pool.get_connection() as conn:
+                    if table_name == "tblAlarmLog":
+                        if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
+                            self._load_error_list()
+                            if self.alarms_0_1.empty:
+                                logger.error(
+                                    "Failed to load alarms_0_1 for tblAlarmLog fetch."
+                                )
+                                return pd.DataFrame()
+                        query = self.construct_query(
+                            period_start, period_end, self.alarms_0_1
+                        )
+                    else:
+                        columns = self._get_columns_for_table(table_name)
+                        query = f"""
+                        SELECT {columns} FROM {table_name}
+                        WHERE TimeStamp >= '{period_start}' AND TimeStamp < '{period_end}'
+                        ORDER BY TimeStamp, StationId -- Add ordering for consistency
+                        """
+                    logger.info(
+                        f"Fetching data for {table_name} ({period_start} to {period_end})"
+                    )
+                    logger.warning("Using direct pyodbc connection as fallback (SQLAlchemy engine not available)")
+                    df = pd.read_sql(query, conn)
+                    logger.info(f"Fetched {len(df)} rows from DB for {table_name} using pyodbc connection")
 
-                # Standardize TimeStamp columns
-                for col in ["TimeStamp", "TimeOn", "TimeOff"]:
-                    if col in df.columns:
-                        # Use errors='coerce' to handle potential invalid date formats gracefully
-                        df[col] = pd.to_datetime(df[col], errors="coerce")
+            # Standardize TimeStamp columns (for both SQLAlchemy and pyodbc paths)
+            for col in ["TimeStamp", "TimeOn", "TimeOff"]:
+                if col in df.columns:
+                    # Use errors='coerce' to handle potential invalid date formats gracefully
+                    df[col] = pd.to_datetime(df[col], errors="coerce")
 
                 # Apply manual adjustments if this is the alarm table
                 if table_name == "tblAlarmLog" and not df.empty:
@@ -501,9 +584,8 @@ class DBExporter:
                 logger.info(
                     f"Mode 'check': Comparing DB state with existing file for {table_name}"
                 )
-                # Compare counts and checksums (checksum comparison might be unreliable if data types changed)
-                existing_count = len(existing_df)
-                # Note: Recalculating checksum on existing_df might be needed for accurate check
+                # Note: We could compare counts and checksums here, but it's more reliable to use metadata
+                # Recalculating checksum on existing_df might be needed for accurate check
                 # but can be slow. Relying on metadata count for now.
                 meta_count, meta_checksum = self._read_metadata(
                     self._get_metadata_path(output_path)

@@ -3,14 +3,20 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
+# Import centralized logging
+import logger_config
+
+# Get a logger for this module
+logger = logger_config.get_logger(__name__)
+
 def read_csv_data(data_type, period):
     """
     Read data directly from CSV files in the unified data directory.
-    
+
     Args:
         data_type: Type of data (met, tur, grd, etc.)
         period: Period in YYYY-MM format
-        
+
     Returns:
         DataFrame with the query results
     """
@@ -18,7 +24,7 @@ def read_csv_data(data_type, period):
     # Construct path to the CSV file in the new unified directory
     data_type_upper = data_type.upper()
     csv_file = f"./monthly_data/data/{data_type_upper}/{period}.csv"
-    
+
     # Read CSV file directly into pandas DataFrame
     try:
         # Check if the CSV file exists before attempting to read
@@ -27,7 +33,7 @@ def read_csv_data(data_type, period):
         df = pd.read_csv(csv_file)
     except Exception as e:
         raise ValueError(f"Error reading CSV file {csv_file}: {str(e)}")
-    
+
     # Return the dataframe
     return df
 
@@ -423,12 +429,11 @@ def full_calculation(period):
     alarms["OldTimeOn"] = alarms["TimeOn"]
     alarms["OldTimeOff"] = alarms["TimeOff"]
 
-    print(f"TimeOff NAs = {alarms.loc[alarms.Alarmcode.isin(alarms_0_1)].TimeOff.isna().sum()}")
+    logger.info(f"TimeOff NAs = {alarms.loc[alarms.Alarmcode.isin(alarms_0_1)].TimeOff.isna().sum()}")
 
     if alarms.loc[alarms.Alarmcode.isin(alarms_0_1)].TimeOff.isna().sum():
-        print(
-            f"earliest TimeOn when TimeOff is NA= \
-            {alarms.loc[alarms.Alarmcode.isin(alarms_0_1) & alarms.TimeOff.isna()].TimeOn.min()}"
+        logger.info(
+            f"Earliest TimeOn when TimeOff is NA = {alarms.loc[alarms.Alarmcode.isin(alarms_0_1) & alarms.TimeOff.isna()].TimeOn.min()}"
         )
 
     alarms.loc[alarms.Alarmcode.isin(alarms_0_1), "TimeOff"] = alarms.loc[
@@ -476,7 +481,7 @@ def full_calculation(period):
 
     # -------------------2006  binning --------------------------------------
 
-    print("binning 2006")
+    logger.info("Binning 2006 alarms")
 
     alarms_df_2006 = alarms.loc[(alarms["Alarmcode"] == 2006)].copy()
     # alarms_df_2006['TimeOff'] = alarms_df_2006['NewTimeOn']
@@ -506,11 +511,11 @@ def full_calculation(period):
         alarms_df_2006_10min["Duration 2006(s)"] = alarms_df_2006_10min["Duration 2006(s)"].dt.total_seconds().fillna(0)
 
     else:
-        print("no 2006")
+        logger.info("No 2006 alarms found")
         alarms_df_2006_10min = pd.DataFrame(columns=["TimeStamp", "Duration 2006(s)", "StationId"])
     # ----------------------- binning --------------------------------------
 
-    print("Binning")
+    logger.info("Binning alarms")
     alarms_df_clean = alarms_result_sum.loc[(alarms_result_sum["RealPeriod"].dt.total_seconds() != 0)].copy()
 
     alarms_df_clean_10min = realperiod_10mins(alarms_df_clean)
@@ -554,7 +559,7 @@ def full_calculation(period):
         inplace=True,
     )
 
-    print("Alarms Binned")
+    logger.info("Alarms binning completed")
 
     # ----------Merging with 2006 alarms
 
@@ -565,7 +570,7 @@ def full_calculation(period):
     # -------merging cnt, grd, tur, met,upsampled------
     # merging upsampled alarms with energy production
 
-    print("merging upsampled alarms with energy production")
+    logger.info("Merging upsampled alarms with energy production")
     results = pd.merge(alarms_binned, cnt, on=["TimeStamp", "StationId"], how="left").reset_index(drop=True)
 
     # merging last dataframe with power
@@ -798,7 +803,7 @@ def full_calculation(period):
     results_final[columns_toround] = results_final[columns_toround].round(2).astype(np.float32)
 
     # -------------------------------------------------------------------------
-    print(f"warning: first date in alarm = {warning_date}")
+    logger.warning(f"First date in alarm = {warning_date}")
 
     results_final.drop(
         results_final.loc[results_final["TimeStamp"] == period_start].index,

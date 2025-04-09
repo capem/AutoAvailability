@@ -8,7 +8,6 @@ file handling, and progress reporting, exporting directly to CSV.
 
 import os
 import argparse
-import logging
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 import pyodbc
@@ -19,13 +18,18 @@ from contextlib import contextmanager
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from rich.console import Console
-from rich.logging import RichHandler
 from rich.progress import (
     BarColumn,
     TextColumn,
     Progress,
     TimeRemainingColumn,
 )
+
+# Import centralized logging
+import logger_config
+
+# Get a logger for this module
+logger = logger_config.get_logger(__name__)
 
 # --- Configuration Constants (Merged from db_export.py) ---
 
@@ -81,16 +85,7 @@ METADATA_EXTENSION = ".meta.json"
 # Path to manual adjustments file
 MANUAL_ADJUSTMENTS_FILE = "manual_adjustments.json"
 
-# --- Logging Setup ---
-
-# Use RichHandler for better console output
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(message)s",  # Simplified format for RichHandler
-    datefmt="[%X]",
-    handlers=[RichHandler(rich_tracebacks=True, show_path=False)],
-)
-logger = logging.getLogger("rich")  # Use the rich logger consistently
+# --- Logging is now handled by logger_config module ---
 
 # --- Database Connection Pool (from db_export.py) ---
 

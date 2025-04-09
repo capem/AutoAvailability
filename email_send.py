@@ -2,6 +2,12 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+# Import centralized logging
+import logger_config
+
+# Get a logger for this module
+logger = logger_config.get_logger(__name__)
+
 
 def style_dataframe(df):
     # Inline styles to match the provided table
@@ -67,8 +73,13 @@ def send_email(
     message.attach(html_part)
 
     # SMTP server configuration
-    server = smtplib.SMTP("smtp.gmail.com", 587)
-    server.starttls()
-    server.login(sender_email, email_password)
-    server.send_message(message, from_addr=sender_email, to_addrs=receiver_email)
-    server.quit()
+    try:
+        logger.info(f"Sending email to {receiver_email} with subject: {subject}")
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender_email, email_password)
+        server.send_message(message, from_addr=sender_email, to_addrs=receiver_email)
+        server.quit()
+        logger.info(f"Email sent successfully to {receiver_email}")
+    except Exception as e:
+        logger.error(f"Failed to send email: {str(e)}")

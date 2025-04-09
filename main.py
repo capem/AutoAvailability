@@ -5,51 +5,16 @@ from datetime import timedelta
 import pandas as pd
 import time
 import threading
+# os is used by logger_config
 
 import data_exporter
 import calculation
 import hebdo_calc
 import email_send
-from rich.logging import RichHandler
-import logging
-from logging.handlers import RotatingFileHandler
-import os
+import logger_config
 
-
-def setup_logging(log_directory, log_filename):
-    # Create log directory if it doesn't exist
-    if not os.path.exists(log_directory):
-        os.makedirs(log_directory)
-
-    log_file_path = os.path.join(log_directory, log_filename)
-
-    # Create a logger at the root level
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Root logger captures INFO and above
-
-    # File handler for WARNING and above
-    file_handler = RotatingFileHandler(log_file_path, maxBytes=1e7, backupCount=5)
-    file_handler.setLevel(logging.WARNING)  # Set to WARNING level
-    file_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]"
-        )
-    )
-
-    # Console handler for INFO and above
-    console_handler = RichHandler(
-        rich_tracebacks=True, show_time=False, show_path=False
-    )
-    console_handler.setLevel(logging.INFO)  # Set to INFO level
-    console_handler.setFormatter(
-        logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="[%X]"
-        )
-    )
-
-    # Add handlers to the logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
+# Get a logger for this module
+logger = logger_config.get_logger(__name__)
 
 
 def user_input(stop_event):
@@ -60,11 +25,11 @@ def user_input(stop_event):
 def countdown_timer(duration, stop_event):
     for i in range(duration, 0, -1):
         if stop_event.is_set():
-            print(f"\rExiting due to user input.{' ' * 30}", end="", flush=True)
+            logger.info("Exiting due to user input.")
             return
         print(f"\rExiting in {i} seconds... (Press Enter to exit)", end="", flush=True)
         time.sleep(1)
-    print(f"\rExiting due to timeout...{' ' * 30}", end="", flush=True)
+    logger.info("Exiting due to timeout.")
 
 
 def try_forever(func, *args, **kwargs):
@@ -82,10 +47,10 @@ def try_forever(func, *args, **kwargs):
             elapsed_time = (current_time - start_time).total_seconds()
 
             if elapsed_time > max_duration:
-                logging.error("Maximum duration exceeded. Stopping retries.")
+                logger.error("Maximum duration exceeded. Stopping retries.")
                 break
 
-            logging.exception(
+            logger.exception(
                 f"Attempt {attempts}: An error occurred. Retrying in 30 seconds..."
             )
             time.sleep(30)
@@ -108,7 +73,8 @@ def send_failure_email():
 
 
 if __name__ == "__main__":
-    setup_logging("./logs", "hebdo.log")
+    # Initialize logging
+    logger_config.configure_logging()
     # Define and parse the command-line argument
     parser = argparse.ArgumentParser(
         description="Process weekly data, exporting and calculating."
@@ -150,11 +116,11 @@ if __name__ == "__main__":
     period_end_dt = yesterday.replace(hour=23, minute=50, second=0, microsecond=0)
     period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
 
-    logging.warning("data_exporter")
+    logger.info("Starting data export process")
     # Call data_exporter for each required month, passing the update mode
     for period in period_range:
         period_str = period.strftime("%Y-%m")
-        logging.info(
+        logger.info(
             f"Running data export for period {period_str} with mode '{args.update_mode}'"
         )
         # Use lambda to pass extra arguments to the function called by try_forever
@@ -169,7 +135,7 @@ if __name__ == "__main__":
 
     # Alarm data is now exported by data_exporter
 
-    logging.warning("calculation")
+    logger.info("Starting calculation process")
     # Loop over the period range and call the functions
     for period in period_range:
         period_month = period.strftime("%Y-%m")
@@ -230,7 +196,7 @@ if __name__ == "__main__":
     results_grouped.to_csv(csv_filename, decimal=",", sep=",")
     # results = pd.read_pickle(f"./monthly_data/results/{period_month}.pkl")
 
-    logging.warning("hebdo_calc")
+    logger.info("Starting weekly calculation process")
     df_exploi = try_forever(
         hebdo_calc.main, period_range, period_start_dt, period_end_dt
     )
@@ -240,7 +206,7 @@ if __name__ == "__main__":
 
     title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
 
-    logging.warning("send_email")
+    logger.info("Starting email sending process")
     try_forever(
         email_send.send_email,
         df=df_exploi,
@@ -256,7 +222,7 @@ if __name__ == "__main__":
         subject=f"Top 15 Total Energy Lost(MWh){title}",
     )
 
-    logging.warning("Done")
+    logger.info("All processes completed successfully")
     stop_event = threading.Event()
 
     # Thread for user input

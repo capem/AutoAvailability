@@ -9,7 +9,6 @@ file handling, and progress reporting, exporting directly to CSV.
 import os
 import argparse
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
 import pyodbc
 import queue
 import json
@@ -921,9 +920,9 @@ def export_data_for_period(
     period, file_types=None, update_mode="append"
 ):  # Added update_mode
     """
-    Export data for the given period and file types using ThreadPoolExecutor
+    Export data for the given period and file types sequentially
     """
-    # Ensure directories exist before starting threads
+    # Ensure directories exist before starting export
     ensure_directories()
 
     results = {}
@@ -936,50 +935,39 @@ def export_data_for_period(
         TimeRemainingColumn(),
         transient=True,  # Clear progress on exit
     ) as progress:
-        # Max workers can be tuned
-        with ThreadPoolExecutor(max_workers=len(file_types) or 1) as executor:
-            futures = {}
-            for file_type in file_types:
-                task_description = f"Exporting {file_type.upper()}"
-                task_id = progress.add_task(
-                    task_description, total=1
-                )  # Total=1 step (export+archive)
-                # Submit the main export function
-                futures[task_id] = executor.submit(
-                    export_table_to_csv,  # Use renamed function
+        # Process each file type sequentially
+        for file_type in file_types:
+            task_description = f"Exporting {file_type.upper()}"
+            task_id = progress.add_task(
+                task_description, total=1
+            )  # Total=1 step (export+archive)
+
+            try:
+                # Call the export function directly
+                result_dict = export_table_to_csv(
                     period,
                     [file_type],  # Pass file_type as a list
                     update_mode=update_mode,
                 )
-
-            # Process results as they complete
-            for task_id, future in futures.items():
-                file_type = (
-                    progress._tasks[task_id].description.split(" ")[1].lower()
-                )  # Get file_type from description
-                try:
-                    result_dict = (
-                        future.result()
-                    )  # This is the dict returned by export_table_to_csv
-                    success = result_dict.get(file_type, False)
-                    results[file_type] = success
-                    progress.update(
-                        task_id,
-                        completed=1,
-                        description=f"Exporting {file_type.upper()} - {'OK' if success else 'FAIL'}",
-                    )
-                except Exception as e:
-                    logger.error(f"Thread failed for {file_type}: {e}")
-                    results[file_type] = False
-                    progress.update(
-                        task_id,
-                        completed=1,
-                        description=f"Exporting {file_type.upper()} - ERROR",
-                    )
-                finally:
-                    # Ensure task is marked as completed even on error before result processing
-                    if not progress._tasks[task_id].finished:
-                        progress.update(task_id, completed=1)
+                success = result_dict.get(file_type, False)
+                results[file_type] = success
+                progress.update(
+                    task_id,
+                    completed=1,
+                    description=f"Exporting {file_type.upper()} - {'OK' if success else 'FAIL'}",
+                )
+            except Exception as e:
+                logger.error(f"Export failed for {file_type}: {e}")
+                results[file_type] = False
+                progress.update(
+                    task_id,
+                    completed=1,
+                    description=f"Exporting {file_type.upper()} - ERROR",
+                )
+            finally:
+                # Ensure task is marked as completed even on error before result processing
+                if not progress._tasks[task_id].finished:
+                    progress.update(task_id, completed=1)
 
     return results
 

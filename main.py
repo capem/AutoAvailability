@@ -4,7 +4,6 @@ from datetime import datetime as dt
 from datetime import timedelta
 import pandas as pd
 import time
-import threading
 # os is used by logger_config
 
 import data_exporter
@@ -18,18 +17,27 @@ import results_grouper
 logger = logger_config.get_logger(__name__)
 
 
-def user_input(stop_event):
-    input()  # Wait for Enter key press
-    stop_event.set()
+def simple_countdown(duration):
+    """Simple countdown timer without threading"""
+    logger.info(f"Process completed. Exiting in {duration} seconds...")
+    print(f"Process completed. Press Enter to exit immediately or wait {duration} seconds.")
 
+    # Use a non-blocking approach to check for input while counting down
+    import msvcrt
+    start_time = time.time()
+    while time.time() - start_time < duration:
+        # Check if a key is pressed
+        if msvcrt.kbhit():
+            key = msvcrt.getch()
+            if key == b'\r':  # Enter key
+                logger.info("Exiting due to user input.")
+                return
 
-def countdown_timer(duration, stop_event):
-    for i in range(duration, 0, -1):
-        if stop_event.is_set():
-            logger.info("Exiting due to user input.")
-            return
-        print(f"\rExiting in {i} seconds... (Press Enter to exit)", end="", flush=True)
-        time.sleep(1)
+        # Update countdown display
+        remaining = duration - int(time.time() - start_time)
+        print(f"\rExiting in {remaining} seconds... (Press Enter to exit)", end="", flush=True)
+        time.sleep(0.1)
+
     logger.info("Exiting due to timeout.")
 
 
@@ -174,12 +182,6 @@ if __name__ == "__main__":
     )
 
     logger.info("All processes completed successfully")
-    stop_event = threading.Event()
 
-    # Thread for user input
-    input_thread = threading.Thread(target=user_input, args=(stop_event,))
-    input_thread.daemon = True
-    input_thread.start()
-
-    # Countdown timer
-    countdown_timer(30, stop_event)
+    # Simple countdown without threading
+    simple_countdown(30)

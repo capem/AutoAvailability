@@ -159,9 +159,10 @@ if __name__ == "__main__":
         )
         # Use lambda to pass extra arguments to the function called by try_forever
         try_forever(
-            lambda p, mode: data_exporter.export_and_archive_tables(
-                p, update_mode=mode
-            ),
+            # Call the main export orchestration function from data_exporter
+            lambda p, mode: data_exporter.main_export_flow(
+                period=p, update_mode=mode
+            ), # Pass period and mode explicitly
             period_str,  # First arg for the lambda (p)
             args.update_mode,  # Second arg for the lambda (mode)
         )

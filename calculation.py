@@ -1,41 +1,30 @@
 import os
-from zipfile import ZipFile
 import numpy as np
 import pandas as pd
-
 from scipy.interpolate import interp1d
 
-def zip_to_df(data_type, period):
+def read_csv_data(data_type, period):
     """
-    Read data from CSV files that are either extracted from ZIP archives
-    or directly generated from the database.
+    Read data directly from CSV files in the unified data directory.
     
     Args:
         data_type: Type of data (met, tur, grd, etc.)
-        sql: SQL query to execute - Note: With CSV files, this parameter is mainly for backward compatibility
         period: Period in YYYY-MM format
         
     Returns:
         DataFrame with the query results
     """
     # Get file information
-    file_name = f"{period}-{data_type.lower()}"
-    data_type_path = f"./monthly_data/uploads/{data_type.upper()}/"
-    csv_file = f"{data_type_path}{file_name}.csv"
-    zip_file = f"{data_type_path}{file_name}.zip"
-    
-    # Check if CSV file already exists
-    if not os.path.exists(csv_file):
-        # Check if ZIP file exists
-        if os.path.exists(zip_file):
-            # Extract CSV from ZIP
-            with ZipFile(zip_file, "r") as zipf:
-                zipf.extractall(data_type_path)
-
+    # Construct path to the CSV file in the new unified directory
+    data_type_upper = data_type.upper()
+    csv_file = f"./monthly_data/data/{data_type_upper}/{period}.csv"
     
     # Read CSV file directly into pandas DataFrame
     try:
-        df = pd.read_csv(csv_file)         
+        # Check if the CSV file exists before attempting to read
+        if not os.path.exists(csv_file):
+             raise FileNotFoundError(f"CSV file not found at {csv_file}")
+        df = pd.read_csv(csv_file)
     except Exception as e:
         raise ValueError(f"Error reading CSV file {csv_file}: {str(e)}")
     
@@ -270,7 +259,7 @@ class read_files:
     @staticmethod
     def read_grd(period):
 
-        grd = zip_to_df(data_type="grd", period=period)
+        grd = read_csv_data(data_type="grd", period=period) # Use renamed function
         grd["TimeStamp"] = pd.to_datetime(grd["TimeStamp"])
 
         return grd
@@ -279,7 +268,7 @@ class read_files:
     @staticmethod
     def read_cnt(period):
 
-        cnt = zip_to_df(data_type="cnt",  period=period)
+        cnt = read_csv_data(data_type="cnt",  period=period) # Use renamed function
         cnt["TimeStamp"] = pd.to_datetime(cnt["TimeStamp"])
 
         return cnt
@@ -288,7 +277,7 @@ class read_files:
     @staticmethod
     def read_sum(period):
 
-        alarms = zip_to_df("sum", period)
+        alarms = read_csv_data("sum", period) # Use renamed function
 
         alarms.dropna(subset=["Alarmcode"], inplace=True)
         alarms["TimeOn"] = pd.to_datetime(alarms["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f")
@@ -306,7 +295,7 @@ class read_files:
     @staticmethod
     def read_tur(period):
 
-        tur = zip_to_df("tur", period)
+        tur = read_csv_data("tur", period) # Use renamed function
         tur["TimeStamp"] = pd.to_datetime(tur["TimeStamp"])
 
         return tur
@@ -315,7 +304,7 @@ class read_files:
     @staticmethod
     def read_met(period):
 
-        met = zip_to_df("met", period)
+        met = read_csv_data("met", period) # Use renamed function
         met["TimeStamp"] = pd.to_datetime(met["TimeStamp"])
 
         met = met.pivot_table(
@@ -336,7 +325,7 @@ class read_files:
     @staticmethod
     def read_din(period):
 
-        din = zip_to_df("din", period)
+        din = read_csv_data("din", period) # Use renamed function
         din["TimeStamp"] = pd.to_datetime(din["TimeStamp"])
 
         return din

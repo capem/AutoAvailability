@@ -3,7 +3,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 # Import centralized logging
-import logger_config
+from . import logger_config
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)

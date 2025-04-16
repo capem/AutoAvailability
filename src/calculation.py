@@ -4,7 +4,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 
 # Import centralized logging
-import logger_config
+from . import logger_config
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -23,7 +23,7 @@ def read_csv_data(data_type, period):
     # Get file information
     # Construct path to the CSV file in the new unified directory
     data_type_upper = data_type.upper()
-    csv_file = f"../monthly_data/data/{data_type_upper}/{period}.csv"
+    csv_file = f"./monthly_data/data/{data_type_upper}/{period}.csv"
 
     # Read CSV file directly into pandas DataFrame
     try:
@@ -222,7 +222,7 @@ def cf_column(x):
 
 
 def Epot_case_2(df):
-    CB2 = pd.read_excel("../config/CB2.xlsx")
+    CB2 = pd.read_excel("./config/CB2.xlsx")
     CB2 = CB2.astype(int).drop_duplicates()
     CB2_interp = interp1d(CB2.Wind, CB2.Power, kind="linear", fill_value="extrapolate")
 
@@ -243,9 +243,9 @@ def Epot_case_2(df):
 
 
 def Epot_case_3(period):
-    NWD = pd.read_excel("../config/NWD.xlsx", index_col=0)
-    SWF = pd.read_excel("../config/SWF.xlsx", index_col=0)
-    CB2 = pd.read_excel("../config/CB2.xlsx")
+    NWD = pd.read_excel("./config/NWD.xlsx", index_col=0)
+    SWF = pd.read_excel("./config/SWF.xlsx", index_col=0)
+    CB2 = pd.read_excel("./config/CB2.xlsx")
     PWE = 0.92
     NAE = 0
     CB2 = CB2.astype(int).drop_duplicates()
@@ -399,7 +399,7 @@ def full_calculation(period):
     din = din.loc[din.index.isin(sanity_din)]
 
     # --------------------------error list-------------------------
-    error_list = pd.read_excel(r"../config/Alarmes List Norme RDS-PP_Tarec.xlsx")
+    error_list = pd.read_excel(r"./config/Alarmes List Norme RDS-PP_Tarec.xlsx")
 
     error_list.Number = error_list.Number.astype(int)  # ,errors='ignore'
 

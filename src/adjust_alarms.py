@@ -14,14 +14,14 @@ from rich.console import Console
 from rich.table import Table
 
 # Import centralized logging
-import logger_config
+from . import logger_config
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
 console = Console()
 
 # Path to the manual adjustments file
-ADJUSTMENTS_FILE = "../config/manual_adjustments.json"
+ADJUSTMENTS_FILE = "./config/manual_adjustments.json"
 
 
 def load_adjustments():

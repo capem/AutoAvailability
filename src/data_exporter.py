@@ -874,7 +874,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
 
             # Define paths using the unified data directory
             csv_dir = os.path.join(BASE_DATA_PATH, file_type_upper)
-            csv_filename = f"{period}.{FILE_EXTENSION}"
+            csv_filename = f"{period}-{file_type}.{FILE_EXTENSION}"
             csv_path = os.path.join(csv_dir, csv_filename)
 
             os.makedirs(csv_dir, exist_ok=True)

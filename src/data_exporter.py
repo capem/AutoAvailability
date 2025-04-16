@@ -649,32 +649,34 @@ class DBExporter:
                         ].copy()
                         common_rows = merged_df[merged_df["_merge"] == "both"].copy()
 
-                        # Restore original column names for new rows
+                        # Select only the DB columns and restore original names for new rows
+                        db_cols_new = [c for c in new_rows.columns if c.endswith("_db")]
+                        new_rows = new_rows[db_cols_new].copy() # Select only _db columns
                         new_rows.columns = [
-                            c.replace("_db", "") for c in new_rows.columns
+                            c.replace("_db", "") for c in new_rows.columns # Rename
                         ]
 
-                        # Keep deleted rows (as per 'append' preserving deletions)
+                        # Select only the existing columns and restore original names for deleted rows
+                        ex_cols_deleted = [c for c in deleted_rows.columns if c.endswith("_ex")]
+                        deleted_rows = deleted_rows[ex_cols_deleted].copy() # Select only _ex columns
                         deleted_rows.columns = [
-                            c.replace("_ex", "") for c in deleted_rows.columns
+                            c.replace("_ex", "") for c in deleted_rows.columns # Rename
                         ]
 
                         # For common rows, check for updates (simple check: keep DB version)
                         # A more robust check would compare non-key columns
-                        common_rows_final = common_rows[
-                            [
-                                c
-                                for c in common_rows.columns
-                                if c.endswith("_db") or c in unique_keys
-                            ]
-                        ].copy()
-                        common_rows_final.columns = [
-                            c.replace("_db", "") for c in common_rows_final.columns
+                        # Select only the columns from the DB version (_db suffix)
+                        db_cols = [c for c in common_rows.columns if c.endswith("_db")]
+                        common_rows_corrected = common_rows[db_cols].copy()
+
+                        # Rename columns by removing the suffix
+                        common_rows_corrected.columns = [
+                            c.replace("_db", "") for c in common_rows_corrected.columns
                         ]
 
                         # Combine results
                         final_df = pd.concat(
-                            [common_rows_final, new_rows, deleted_rows],
+                            [common_rows_corrected, new_rows, deleted_rows],
                             ignore_index=True,
                         )
                         # Drop the merge indicator if it exists

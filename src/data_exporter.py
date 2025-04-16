@@ -78,11 +78,11 @@ TABLE_CHECKSUM_COLUMNS = {
 FILE_EXTENSION = "csv"
 
 # Output directories
-BASE_DATA_PATH = "./monthly_data/data"  # Unified data directory
+BASE_DATA_PATH = "../monthly_data/data"  # Unified data directory
 METADATA_EXTENSION = ".meta.json"
 
 # Path to manual adjustments file
-MANUAL_ADJUSTMENTS_FILE = "manual_adjustments.json"
+MANUAL_ADJUSTMENTS_FILE = "../config/manual_adjustments.json"
 
 # --- Logging is now handled by logger_config module ---
 
@@ -218,7 +218,7 @@ class DBExporter:
     def _load_error_list(self):
         """Loads and prepares the alarm error list from the Excel file."""
         try:
-            excel_path = r"Alarmes List Norme RDS-PP_Tarec.xlsx"
+            excel_path = r"../config/Alarmes List Norme RDS-PP_Tarec.xlsx"
             if not os.path.exists(excel_path):
                 logger.error(f"Error list file not found at: {excel_path}")
                 self.alarms_0_1 = pd.Series(dtype=int)

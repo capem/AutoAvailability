@@ -70,7 +70,7 @@ def process_grouped_results(results, period_month):
     results_grouped.index += 1
 
     # Ensure the directory exists
-    output_dir = "./monthly_data/results/Grouped_Results"
+    output_dir = "../monthly_data/results/Grouped_Results"
     os.makedirs(output_dir, exist_ok=True)
 
     csv_filename = f"{output_dir}/grouped_{period_month}-Availability.csv"
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         period_month = sys.argv[1]
         try:
-            results = pd.read_pickle(f"./monthly_data/results/{period_month}.pkl")
+            results = pd.read_pickle(f"../monthly_data/results/{period_month}.pkl")
             process_grouped_results(results, period_month)
             print(f"Successfully processed grouped results for {period_month}")
         except Exception as e:

@@ -6,12 +6,12 @@ import pandas as pd
 import time
 # os is used by logger_config
 
-import data_exporter
-import calculation
-import hebdo_calc
-import email_send
-import logger_config
-import results_grouper
+from src import data_exporter
+from src import calculation
+from src import hebdo_calc
+from src import email_send
+from src import logger_config
+from src import results_grouper
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)

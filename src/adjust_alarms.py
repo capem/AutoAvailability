@@ -21,7 +21,7 @@ logger = logger_config.get_logger(__name__)
 console = Console()
 
 # Path to the manual adjustments file
-ADJUSTMENTS_FILE = "manual_adjustments.json"
+ADJUSTMENTS_FILE = "../config/manual_adjustments.json"
 
 
 def load_adjustments():

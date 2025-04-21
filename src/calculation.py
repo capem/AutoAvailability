@@ -23,7 +23,7 @@ def read_csv_data(data_type, period):
     # Get file information
     # Construct path to the CSV file in the new unified directory
     data_type_upper = data_type.upper()
-    csv_file = f"./monthly_data/data/{data_type_upper}/{period}.csv"
+    csv_file = f"./monthly_data/data/{data_type_upper}/{period}-{data_type}.csv"
 
     # Read CSV file directly into pandas DataFrame
     try:
@@ -226,11 +226,17 @@ def Epot_case_2(df):
     CB2 = CB2.astype(int).drop_duplicates()
     CB2_interp = interp1d(CB2.Wind, CB2.Power, kind="linear", fill_value="extrapolate")
 
+    # Debug information
+    logger.debug(f"Epot_case_2 called with DataFrame of shape {df.shape}")
+    logger.debug(f"Available columns in DataFrame: {list(df.columns)}")
+
     # List of desired columns
     desired_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
+    logger.debug(f"Looking for columns: {desired_columns}")
 
     # Filter out the columns that exist in df
     available_columns = [col for col in desired_columns if col in df.columns]
+    logger.debug(f"Found columns: {available_columns}")
 
     # Calculate the mean of the available columns for all rows
     if available_columns:
@@ -657,8 +663,24 @@ def full_calculation(period):
     # Check if there are any NA values in the 'Epot' column
     if results_final["Epot"].isna().any():
         mask_Epot_case_2 = results_final["Epot"].isna()
+        na_count = mask_Epot_case_2.sum()
+        logger.info(f"Found {na_count} NA values in 'Epot' column, attempting to fill with Epot_case_2")
 
-        Epot_case_2_var = Epot_case_2(results_final.loc[mask_Epot_case_2])
+        # Debug the DataFrame before calling Epot_case_2
+        df_for_epot = results_final.loc[mask_Epot_case_2]
+        logger.debug(f"DataFrame for Epot_case_2 has shape {df_for_epot.shape}")
+
+        # Check if any of the required columns exist in the DataFrame
+        wind_cols = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
+        existing_cols = [col for col in wind_cols if col in df_for_epot.columns]
+        logger.info(f"Wind speed columns found in DataFrame: {existing_cols}")
+
+        # Try to get Epot values using Epot_case_2
+        try:
+            Epot_case_2_var = Epot_case_2(df_for_epot)
+            logger.info(f"Successfully calculated Epot_case_2 values")
+        except Exception as e:
+            logger.error(f"Error in Epot_case_2: {str(e)}")
 
         results_final.loc[mask_Epot_case_2, "Epot"] = np.maximum(
             Epot_case_2_var,

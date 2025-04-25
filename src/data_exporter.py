@@ -1,4 +1,4 @@
-"""
+﻿"""
 Data Exporter Module
 
 This module handles exporting data from a SQL Server database to CSV files,
@@ -55,7 +55,7 @@ TABLE_MAPPINGS = {
 # Using lists for easier maintenance
 TABLE_COLUMNS = {
     "tblAlarmLog": ["[ID]", "[TimeOn]", "[TimeOff]", "[StationNr]", "[Alarmcode]", "[Parameter]"],
-    "tblSCMet": ["[TimeStamp]", "[StationId]", "[met_WindSpeedRot_mean]", "[met_WinddirectionRot_mean]", "[met_Pressure_mean]", "[met_TemperatureRot_mean]"],
+    "tblSCMet": ["[TimeStamp]", "[StationId]", "[met_WindSpeedRot_mean]", "[met_WinddirectionRot_mean]", "[met_Pressure_mean]", "[met_TemperatureTen_mean]"],
     "tblSCTurbine": ["[TimeStamp]", "[StationId]", "[wtc_AcWindSp_mean]", "[wtc_AcWindSp_stddev]", "[wtc_ActualWindDirection_mean]", "[wtc_ActualWindDirection_stddev]"],
     "tblSCTurGrid": ["[TimeStamp]", "[StationId]", "[wtc_ActPower_min]", "[wtc_ActPower_max]", "[wtc_ActPower_mean]"],
     "tblSCTurCount": ["[TimeStamp]", "[StationId]", "[wtc_kWG1Tot_accum]", "[wtc_kWG1TotE_accum]", "[wtc_kWG1TotI_accum]", "[wtc_BoostKWh_endvalue]", "[wtc_BostkWhS_endvalue]"],

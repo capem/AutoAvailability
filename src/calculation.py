@@ -25,12 +25,19 @@ def read_csv_data(data_type, period):
     data_type_upper = data_type.upper()
     csv_file = f"./monthly_data/data/{data_type_upper}/{period}-{data_type}.csv"
 
+    # Define dtype specifically for 'met' data
+    read_options = {}
+    if data_type == 'met':
+        read_options['dtype'] = {'StationId': 'Int64'} # Use nullable integer type
+
     # Read CSV file directly into pandas DataFrame
     try:
         # Check if the CSV file exists before attempting to read
         if not os.path.exists(csv_file):
              raise FileNotFoundError(f"CSV file not found at {csv_file}")
-        df = pd.read_csv(csv_file)
+        # Pass dtype option if defined
+        df = pd.read_csv(csv_file, **read_options)
+        logger.debug(f"Read {csv_file} with options: {read_options}. Dtypes: {df.dtypes}") # Add debug log
     except Exception as e:
         raise ValueError(f"Error reading CSV file {csv_file}: {str(e)}")
 
@@ -318,6 +325,8 @@ class read_files:
 
         met = read_csv_data("met", period) # Use renamed function
         met["TimeStamp"] = pd.to_datetime(met["TimeStamp"])
+        logger.debug(f"[read_met] Pre-pivot columns: {list(met.columns)}")
+        logger.debug(f"[read_met] Pre-pivot shape: {met.shape}")
 
         met = met.pivot_table(
             index="TimeStamp",
@@ -331,6 +340,8 @@ class read_files:
         met.reset_index(inplace=True)
 
         met.columns = ["_".join(str(v) for v in tup) if type(tup) is tuple else tup for tup in met.columns]
+        logger.debug(f"[read_met] Post-pivot columns: {list(met.columns)}")
+        logger.debug(f"[read_met] Post-pivot shape: {met.shape}")
 
         return met
 
@@ -600,7 +611,11 @@ def full_calculation(period):
     )
 
     # merging last dataframe with met mast data
+    logger.debug(f"[full_calculation] Pre-MET merge 'met' columns: {list(met.columns)}")
+    logger.debug(f"[full_calculation] Pre-MET merge 'met' shape: {met.shape}")
     results = pd.merge(results, met, on="TimeStamp", how="left")
+    logger.debug(f"[full_calculation] Post-MET merge 'results' columns: {list(results.columns)}")
+    logger.debug(f"[full_calculation] Post-MET merge 'results' shape: {results.shape}")
 
     # merging last dataframe with curtailement
     results = pd.merge(results, din, on=["StationId", "TimeStamp"], how="left")
@@ -659,6 +674,8 @@ def full_calculation(period):
     results_final = pd.concat([results_no, results_n], sort=False)
 
     results_final = results_final.sort_values(["StationId", "TimeStamp"]).reset_index(drop=True)
+    logger.debug(f"[full_calculation] Pre-Epot check 'results_final' columns: {list(results_final.columns)}")
+    logger.debug(f"[full_calculation] Pre-Epot check 'results_final' shape: {results_final.shape}")
 
     # Check if there are any NA values in the 'Epot' column
     if results_final["Epot"].isna().any():
@@ -669,6 +686,7 @@ def full_calculation(period):
         # Debug the DataFrame before calling Epot_case_2
         df_for_epot = results_final.loc[mask_Epot_case_2]
         logger.debug(f"DataFrame for Epot_case_2 has shape {df_for_epot.shape}")
+        logger.debug(f"[full_calculation] 'df_for_epot' columns: {list(df_for_epot.columns)}") # Log columns here
 
         # Check if any of the required columns exist in the DataFrame
         wind_cols = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
@@ -676,6 +694,7 @@ def full_calculation(period):
         logger.info(f"Wind speed columns found in DataFrame: {existing_cols}")
 
         # Try to get Epot values using Epot_case_2
+        Epot_case_2_var = None # Initialize variable
         try:
             Epot_case_2_var = Epot_case_2(df_for_epot)
             logger.info(f"Successfully calculated Epot_case_2 values")

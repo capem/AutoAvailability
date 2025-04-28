@@ -632,6 +632,12 @@ class DBExporter:
                         )
                         final_df = db_df
                     else:
+                        # Add logging before merge
+                        logger.debug(f"[_reconcile] Pre-merge db_df columns: {list(db_df.columns)}")
+                        logger.debug(f"[_reconcile] Pre-merge db_df dtypes:\n{db_df.dtypes.to_string()}")
+                        logger.debug(f"[_reconcile] Pre-merge existing_df columns: {list(existing_df.columns)}")
+                        logger.debug(f"[_reconcile] Pre-merge existing_df dtypes:\n{existing_df.dtypes.to_string()}")
+
                         # Merge based on unique keys
                         merged_df = pd.merge(
                             db_df.add_suffix("_db"),
@@ -641,6 +647,7 @@ class DBExporter:
                             how="outer",
                             indicator=True,
                         )
+                        logger.debug(f"[_reconcile] Post-merge merged_df columns: {list(merged_df.columns)}")
 
                         # Identify new, deleted, and potentially updated rows
                         new_rows = merged_df[merged_df["_merge"] == "left_only"].copy()
@@ -673,12 +680,16 @@ class DBExporter:
                         common_rows_corrected.columns = [
                             c.replace("_db", "") for c in common_rows_corrected.columns
                         ]
+                        logger.debug(f"[_reconcile] Pre-concat common_rows_corrected columns: {list(common_rows_corrected.columns)}")
+                        logger.debug(f"[_reconcile] Pre-concat new_rows columns: {list(new_rows.columns)}")
+                        logger.debug(f"[_reconcile] Pre-concat deleted_rows columns: {list(deleted_rows.columns)}")
 
                         # Combine results
                         final_df = pd.concat(
                             [common_rows_corrected, new_rows, deleted_rows],
                             ignore_index=True,
                         )
+                        logger.debug(f"[_reconcile] Post-concat final_df columns: {list(final_df.columns)}")
                         # Drop the merge indicator if it exists
                         if "_merge" in final_df.columns:
                             final_df.drop(columns=["_merge"], inplace=True)

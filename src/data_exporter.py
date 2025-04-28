@@ -736,6 +736,23 @@ class DBExporter:
     def export_table_data(self, table_name, period, output_path, update_mode="append"):
         """Exports data for a specific table and period."""
         try:
+            # Handle process-existing mode: skip DB/export, process existing file
+            if update_mode == "process-existing":
+                if os.path.exists(output_path):
+                    logger.info(f"[process-existing] Processing existing file: {output_path}")
+                    # Placeholder for any processing logic on the existing file
+                    # For now, just read and log row count
+                    try:
+                        df = pd.read_csv(output_path)
+                        logger.info(f"[process-existing] {len(df)} rows found in {output_path}")
+                        return True
+                    except Exception as e:
+                        logger.error(f"[process-existing] Failed to read {output_path}: {e}")
+                        return False
+                else:
+                    logger.warning(f"[process-existing] File does not exist: {output_path}")
+                    return False
+
             # Calculate period start and end dates
             period_dt = datetime.strptime(period, "%Y-%m")
             period_start = period_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -851,6 +868,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
                            'append': Reconcile DB changes with existing CSV, preserving deletions.
                            'force-overwrite': Export fresh data from DB, overwriting existing CSV.
                            'check': Compare DB state with metadata, report changes, no export.
+                           'process-existing': Skip DB/export, process existing files only.
 
     Returns:
         dict: A dictionary with file types as keys and boolean success status as values.
@@ -1076,9 +1094,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update-mode",
-        choices=["check", "append", "force-overwrite"],
+        choices=["check", "append", "force-overwrite", "process-existing"],
         default="append",
-        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data).",
+        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only).",
     )
 
     args = parser.parse_args()

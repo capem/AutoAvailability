@@ -97,9 +97,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update-mode",
-        choices=["check", "append", "force-overwrite"],
+        choices=["check", "append", "force-overwrite", "process-existing"],
         default="append",  # Defaulting to 'append' as decided
-        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data).",
+        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only).",
     )
     args = parser.parse_args()
 

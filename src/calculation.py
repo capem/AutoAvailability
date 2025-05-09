@@ -756,8 +756,6 @@ def full_calculation(period):
 
     results_final["EL_indefini"] = results_final["EL_indefini"].fillna(0) - results_final["EL_PowerRed"]
 
-    results_final["EL_PowerRed"] = results_final["EL_PowerRed"].fillna(0)
-
     # -------------------------------------------------------------------------
 
     mask_5 = (results_final["EL_indefini"] > 0) & (results_final["Duration 2006(s)"] > 0)  # & warning 2006 > 0

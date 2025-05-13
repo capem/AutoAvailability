@@ -45,83 +45,169 @@ def read_csv_data(data_type, period):
     return df
 
 
-# Determine alarms real periods
-def cascade(df):
-    df.reset_index(inplace=True, drop=True)
-    df["TimeOffMax"] = df.TimeOff.cummax().shift()
+# ============================= ALARM PERIOD CALCULATION FUNCTIONS =============================
 
-    df.at[0, "TimeOffMax"] = df.at[0, "TimeOn"]
+def cascade_alarm_times(alarm_df):
+    """
+    Determine the maximum end time of previous alarms to handle overlapping alarms.
 
-    return df
+    This function calculates the cumulative maximum of TimeOff values and shifts them
+    to create a TimeOffMax column that represents the latest end time of any previous alarm.
 
+    Args:
+        alarm_df: DataFrame containing alarm data with TimeOn and TimeOff columns
 
-# looping through turbines and applying cascade method
-def apply_cascade(result_sum):
-    # Sort by alarm ID
-    result_sum.sort_values(["TimeOn", "ID"], inplace=True)
-    df = result_sum.groupby("StationNr", group_keys=True).apply(cascade, include_groups=False)
+    Returns:
+        DataFrame with added TimeOffMax column
+    """
+    alarm_df.reset_index(inplace=True, drop=True)
+    # Calculate cumulative maximum of TimeOff values (shifted by 1)
+    alarm_df["TimeOffMax"] = alarm_df.TimeOff.cummax().shift()
 
-    mask_root = df.TimeOn.values >= df.TimeOffMax.values
-    mask_children = (df.TimeOn.values < df.TimeOffMax.values) & (df.TimeOff.values > df.TimeOffMax.values)
-    mask_embedded = df.TimeOff.values <= df.TimeOffMax.values
+    # Set the first TimeOffMax to the first TimeOn (no previous alarms)
+    alarm_df.at[0, "TimeOffMax"] = alarm_df.at[0, "TimeOn"]
 
-    df.loc[mask_root, "NewTimeOn"] = df.loc[mask_root, "TimeOn"]
-    df.loc[mask_children, "NewTimeOn"] = df.loc[mask_children, "TimeOffMax"]
-    df.loc[mask_embedded, "NewTimeOn"] = df.loc[mask_embedded, "TimeOff"]
-
-    # df.drop(columns=["TimeOffMax"], inplace=True)
-
-    df.reset_index(inplace=True)
-
-    TimeOff = df.TimeOff
-    NewTimeOn = df.NewTimeOn
-
-    df["RealPeriod"] = abs(TimeOff - NewTimeOn)
-
-    mask_siemens = df["Error Type"] == 1
-    mask_tarec = df["Error Type"] == 0
-
-    df["Period Siemens(s)"] = df[mask_siemens].RealPeriod  # .dt.seconds
-    df["Period Tarec(s)"] = df[mask_tarec].RealPeriod  # .dt.seconds
-
-    return df
+    return alarm_df
 
 
-def realperiod_10mins(last_df, type="1-0"):
-    last_df["TimeOnRound"] = last_df["NewTimeOn"].dt.ceil("10min")
-    last_df["TimeOffRound"] = last_df["TimeOff"].dt.ceil("10min")
-    last_df["TimeStamp"] = last_df.apply(
+def apply_cascade_method(alarm_summary_df):
+    """
+    Apply the cascade method to determine real alarm periods by handling overlapping alarms.
+
+    This function:
+    1. Groups alarms by turbine (StationNr)
+    2. Applies the cascade_alarm_times function to each group
+    3. Calculates the real period of each alarm based on overlapping conditions
+    4. Separates periods by error type (Siemens vs Tarec)
+
+    Args:
+        alarm_summary_df: DataFrame containing alarm summary data
+
+    Returns:
+        DataFrame with calculated real alarm periods
+    """
+    # Sort by alarm start time and ID
+    alarm_summary_df.sort_values(["TimeOn", "ID"], inplace=True)
+
+    # Apply cascade function to each turbine group
+    processed_df = alarm_summary_df.groupby("StationNr", group_keys=True).apply(
+        cascade_alarm_times, include_groups=False
+    )
+
+    # Define masks for different alarm overlap scenarios
+    # Root alarms: Start after any previous alarm ends
+    mask_root_alarms = processed_df.TimeOn.values >= processed_df.TimeOffMax.values
+
+    # Child alarms: Start during a previous alarm but end after it
+    mask_child_alarms = (
+        (processed_df.TimeOn.values < processed_df.TimeOffMax.values) &
+        (processed_df.TimeOff.values > processed_df.TimeOffMax.values)
+    )
+
+    # Embedded alarms: Completely contained within a previous alarm
+    mask_embedded_alarms = processed_df.TimeOff.values <= processed_df.TimeOffMax.values
+
+    # Set the new start time based on the overlap scenario
+    processed_df.loc[mask_root_alarms, "NewTimeOn"] = processed_df.loc[mask_root_alarms, "TimeOn"]
+    processed_df.loc[mask_child_alarms, "NewTimeOn"] = processed_df.loc[mask_child_alarms, "TimeOffMax"]
+    processed_df.loc[mask_embedded_alarms, "NewTimeOn"] = processed_df.loc[mask_embedded_alarms, "TimeOff"]
+
+    # Reset index for further processing
+    processed_df.reset_index(inplace=True)
+
+    # Calculate the real period (duration) of each alarm
+    end_times = processed_df.TimeOff
+    start_times = processed_df.NewTimeOn
+    processed_df["RealPeriod"] = abs(end_times - start_times)
+
+    # Separate periods by error type
+    mask_siemens_errors = processed_df["Error Type"] == 1
+    mask_tarec_errors = processed_df["Error Type"] == 0
+
+    # Assign periods to their respective error type columns
+    processed_df["Period Siemens(s)"] = processed_df[mask_siemens_errors].RealPeriod
+    processed_df["Period Tarec(s)"] = processed_df[mask_tarec_errors].RealPeriod
+
+    return processed_df
+
+
+def convert_to_10min_intervals(alarm_df, alarm_type="1-0"):
+    """
+    Convert alarm periods to 10-minute intervals for time series analysis.
+
+    This function:
+    1. Rounds alarm start and end times to 10-minute intervals
+    2. Explodes the data to create a row for each 10-minute interval
+    3. Calculates the actual duration of the alarm within each 10-minute interval
+    4. Assigns durations to appropriate error type columns
+
+    Args:
+        alarm_df: DataFrame containing alarm data with NewTimeOn and TimeOff columns
+        alarm_type: Type of alarm data being processed ("1-0" for normal alarms, "2006" for special case)
+
+    Returns:
+        DataFrame with alarms broken down into 10-minute intervals
+    """
+    # Round start and end times to 10-minute intervals
+    alarm_df["TimeOnRound"] = alarm_df["NewTimeOn"].dt.ceil("10min")
+    alarm_df["TimeOffRound"] = alarm_df["TimeOff"].dt.ceil("10min")
+
+    # Create a row for each 10-minute interval between start and end times
+    alarm_df["TimeStamp"] = alarm_df.apply(
         lambda row: pd.date_range(row["TimeOnRound"], row["TimeOffRound"], freq="10min"),
         axis=1,
     )
-    last_df = last_df.explode("TimeStamp")
-    if type != "2006":
-        last_df["RealPeriod"] = pd.Timedelta(0)
-        last_df["Period Siemens(s)"] = pd.Timedelta(0)
-        last_df["Period Tarec(s)"] = pd.Timedelta(0)
+    # Explode the DataFrame to create a row for each timestamp
+    alarm_df = alarm_df.explode("TimeStamp")
 
-    df_TimeOn = last_df[["TimeStamp", "NewTimeOn"]].copy()
-    df_TimeOff = last_df[["TimeStamp", "TimeOff"]].copy()
+    # Initialize period columns for normal alarms
+    if alarm_type != "2006":
+        alarm_df["RealPeriod"] = pd.Timedelta(0)
+        alarm_df["Period Siemens(s)"] = pd.Timedelta(0)
+        alarm_df["Period Tarec(s)"] = pd.Timedelta(0)
 
-    df_TimeOn["TimeStamp"] = df_TimeOn["TimeStamp"] - pd.Timedelta(minutes=10)
+    # Create temporary DataFrames for calculating actual start and end times within each interval
+    start_times_df = alarm_df[["TimeStamp", "NewTimeOn"]].copy()
+    end_times_df = alarm_df[["TimeStamp", "TimeOff"]].copy()
 
-    last_df["10minTimeOn"] = df_TimeOn[["TimeStamp", "NewTimeOn"]].max(1).values
+    # Adjust timestamp for start times to previous interval
+    start_times_df["TimeStamp"] = start_times_df["TimeStamp"] - pd.Timedelta(minutes=10)
 
-    last_df["10minTimeOff"] = df_TimeOff[["TimeStamp", "TimeOff"]].min(1).values
+    # Calculate actual start and end times within each 10-minute interval
+    alarm_df["10minTimeOn"] = start_times_df[["TimeStamp", "NewTimeOn"]].max(1).values
+    alarm_df["10minTimeOff"] = end_times_df[["TimeStamp", "TimeOff"]].min(1).values
 
-    last_df["RealPeriod"] = last_df["10minTimeOff"] - last_df["10minTimeOn"]
+    # Calculate the real period within each 10-minute interval
+    alarm_df["RealPeriod"] = alarm_df["10minTimeOff"] - alarm_df["10minTimeOn"]
 
-    if type != "2006":
-        mask_siemens = last_df["Error Type"] == 1
-        mask_tarec = last_df["Error Type"] == 0
-        last_df.loc[mask_siemens, "Period Siemens(s)"] = last_df.loc[mask_siemens, "RealPeriod"]
-        last_df.loc[mask_tarec, "Period Tarec(s)"] = last_df.loc[mask_tarec, "RealPeriod"]
+    # Assign periods to their respective error type columns for normal alarms
+    if alarm_type != "2006":
+        mask_siemens_errors = alarm_df["Error Type"] == 1
+        mask_tarec_errors = alarm_df["Error Type"] == 0
+        alarm_df.loc[mask_siemens_errors, "Period Siemens(s)"] = alarm_df.loc[mask_siemens_errors, "RealPeriod"]
+        alarm_df.loc[mask_tarec_errors, "Period Tarec(s)"] = alarm_df.loc[mask_tarec_errors, "RealPeriod"]
 
-    return last_df
+    return alarm_df
 
 
-def remove_1005_overlap(df):  # input => alarmsresultssum
-    df = df[
+def handle_alarm_code_1005_overlap(alarm_df):
+    """
+    Handle special case of alarm code 1005 overlapping with other alarms.
+
+    This function:
+    1. Removes zero-duration alarms (except code 1005)
+    2. Adjusts alarm periods to account for overlaps with alarm code 1005
+    3. Handles different overlap scenarios (end, start, embedded, reverse embedded)
+    4. Reapplies the cascade method to recalculate real periods
+
+    Args:
+        alarm_df: DataFrame containing alarm data with processed periods
+
+    Returns:
+        DataFrame with adjusted alarm periods accounting for code 1005 overlaps
+    """
+    # Select only necessary columns
+    alarm_df = alarm_df[
         [
             "TimeOn",
             "TimeOff",
@@ -137,411 +223,701 @@ def remove_1005_overlap(df):  # input => alarmsresultssum
             "RealPeriod",
         ]
     ].copy()
-    idx_to_drop = df.loc[(df.RealPeriod == pd.Timedelta(0)) & (df.Alarmcode != 1005)].index
-    df.drop(idx_to_drop, inplace=True)
 
-    df.reset_index(drop=True, inplace=True)
-    df_1005 = df.query("Alarmcode == 1005")
+    # Remove zero-duration alarms (except code 1005)
+    zero_duration_mask = (alarm_df.RealPeriod == pd.Timedelta(0)) & (alarm_df.Alarmcode != 1005)
+    alarm_df.drop(alarm_df.loc[zero_duration_mask].index, inplace=True)
 
-    df["TimeOn"] = df["NewTimeOn"]
+    # Reset index and extract all code 1005 alarms
+    alarm_df.reset_index(drop=True, inplace=True)
+    alarms_code_1005 = alarm_df.query("Alarmcode == 1005")
 
-    for _, j in df_1005.iterrows():
-        overlap_end = (
-            (df["TimeOn"] <= j["TimeOn"])
-            & (df["TimeOn"] <= j["TimeOff"])
-            & (df["TimeOff"] > j["TimeOn"])
-            & (df["TimeOff"] <= j["TimeOff"])
-            & (df["StationNr"] == j["StationNr"])
-            & (df["Alarmcode"] != 1005)
+    # Set TimeOn to NewTimeOn for all alarms
+    alarm_df["TimeOn"] = alarm_df["NewTimeOn"]
+
+    # Process each code 1005 alarm
+    for _, alarm_1005 in alarms_code_1005.iterrows():
+        # Define different overlap scenarios with alarm code 1005
+
+        # Scenario 1: Alarms that end during the 1005 alarm
+        overlap_end_mask = (
+            (alarm_df["TimeOn"] <= alarm_1005["TimeOn"])
+            & (alarm_df["TimeOn"] <= alarm_1005["TimeOff"])
+            & (alarm_df["TimeOff"] > alarm_1005["TimeOn"])
+            & (alarm_df["TimeOff"] <= alarm_1005["TimeOff"])
+            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
+            & (alarm_df["Alarmcode"] != 1005)
         )
 
-        overlap_start = (
-            (df["TimeOn"] >= j["TimeOn"])
-            & (df["TimeOn"] <= j["TimeOff"])
-            & (df["TimeOff"] > j["TimeOn"])
-            & (df["TimeOff"] >= j["TimeOff"])
-            & (df["StationNr"] == j["StationNr"])
-            & (df["Alarmcode"] != 1005)
+        # Scenario 2: Alarms that start during the 1005 alarm
+        overlap_start_mask = (
+            (alarm_df["TimeOn"] >= alarm_1005["TimeOn"])
+            & (alarm_df["TimeOn"] <= alarm_1005["TimeOff"])
+            & (alarm_df["TimeOff"] > alarm_1005["TimeOn"])
+            & (alarm_df["TimeOff"] >= alarm_1005["TimeOff"])
+            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
+            & (alarm_df["Alarmcode"] != 1005)
         )
 
-        embedded = (
-            (df["TimeOn"] < j["TimeOn"])
-            & (df["TimeOff"] > j["TimeOff"])
-            & (df["StationNr"] == j["StationNr"])
-            & (df["Alarmcode"] != 1005)
+        # Scenario 3: Alarms that completely span the 1005 alarm
+        embedded_mask = (
+            (alarm_df["TimeOn"] < alarm_1005["TimeOn"])
+            & (alarm_df["TimeOff"] > alarm_1005["TimeOff"])
+            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
+            & (alarm_df["Alarmcode"] != 1005)
         )
-        df_helper = df.loc[embedded].copy()
 
-        df.loc[overlap_start, "TimeOn"] = j["TimeOff"]
-        df.loc[overlap_end, "TimeOff"] = j["TimeOn"]
+        # Create a copy of embedded alarms for later use
+        embedded_alarms = alarm_df.loc[embedded_mask].copy()
 
-        # ---------------------------------------------------
-        if embedded.sum():
-            df.loc[embedded, "TimeOff"] = j["TimeOn"]
+        # Adjust alarm times based on overlap scenario
+        alarm_df.loc[overlap_start_mask, "TimeOn"] = alarm_1005["TimeOff"]
+        alarm_df.loc[overlap_end_mask, "TimeOff"] = alarm_1005["TimeOn"]
 
-            df_helper["TimeOn"] = j["TimeOff"]
-            df = pd.concat([df, df_helper]).sort_values(["TimeOn", "ID"])
+        # Handle embedded alarms (split into two alarms)
+        if embedded_mask.sum():
+            # Adjust end time of original alarm
+            alarm_df.loc[embedded_mask, "TimeOff"] = alarm_1005["TimeOn"]
 
-        # ---------------------------------------------------
-        # df.reset_index(drop=True, inplace=True)
-        reverse_embedded = (
-            (df["TimeOn"] >= j["TimeOn"])
-            & (df["TimeOff"] <= j["TimeOff"])
-            & (df["StationNr"] == j["StationNr"])
-            & (df["Alarmcode"] != 1005)
+            # Create new alarms for the period after code 1005
+            embedded_alarms["TimeOn"] = alarm_1005["TimeOff"]
+            alarm_df = pd.concat([alarm_df, embedded_alarms]).sort_values(["TimeOn", "ID"])
+
+        # Scenario 4: Alarms completely contained within the 1005 alarm
+        reverse_embedded_mask = (
+            (alarm_df["TimeOn"] >= alarm_1005["TimeOn"])
+            & (alarm_df["TimeOff"] <= alarm_1005["TimeOff"])
+            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
+            & (alarm_df["Alarmcode"] != 1005)
         )
-        if reverse_embedded.sum():
-            # df.drop(df.loc[reverse_embedded].index, inplace=True)
-            # df = df.loc[~df.index.drop(df.loc[reverse_embedded].index)]
-            df.loc[reverse_embedded, "TimeOn"] = df.loc[reverse_embedded, "TimeOff"]
 
-    df.loc[df["Alarmcode"] == 1005, "TimeOn"] = df.loc[df["Alarmcode"] == 1005, "OldTimeOn"]
+        # Set start time equal to end time to effectively remove these alarms
+        if reverse_embedded_mask.sum():
+            alarm_df.loc[reverse_embedded_mask, "TimeOn"] = alarm_df.loc[reverse_embedded_mask, "TimeOff"]
 
-    df = apply_cascade(df)
+    # Restore original start times for code 1005 alarms
+    alarm_df.loc[alarm_df["Alarmcode"] == 1005, "TimeOn"] = alarm_df.loc[alarm_df["Alarmcode"] == 1005, "OldTimeOn"]
 
-    return df
+    # Reapply cascade method to recalculate real periods
+    alarm_df = apply_cascade_method(alarm_df)
+
+    return alarm_df
 
 
-def full_range(df, full_range_var):
-    new_df = pd.DataFrame(index=full_range_var)
+# ============================= DATA PROCESSING UTILITY FUNCTIONS =============================
 
+def expand_to_full_time_range(df, time_range):
+    """
+    Expand a DataFrame to include all timestamps in the specified time range.
+
+    This function:
+    1. Creates a new DataFrame with the full time range as index
+    2. Joins the original DataFrame to include all timestamps
+    3. Fills missing values with NaN
+
+    Args:
+        df: DataFrame to expand
+        time_range: Full range of timestamps to include
+
+    Returns:
+        DataFrame expanded to include all timestamps in the range
+    """
+    # Create a new DataFrame with the full time range as index
+    expanded_df = pd.DataFrame(index=time_range)
+
+    # Set the TimeStamp column as index in the original DataFrame
     df = df.set_index("TimeStamp")
-    return new_df.join(df, how="left")
+
+    # Join the original DataFrame with the expanded one
+    return expanded_df.join(df, how="left")
 
 
-def CF(M, WTN=131, AL_ALL=0.08):
-    def AL(M):
-        return AL_ALL * (M - 1) / (WTN - 1)
+def calculate_correction_factor(turbine_count, total_turbines=131, availability_loss=0.08):
+    """
+    Calculate the correction factor for energy production based on available turbines.
 
-    return (1 - AL_ALL) / (1 - AL(M))
+    This function implements the correction factor formula to account for wake effects
+    when fewer turbines are operational.
+
+    Args:
+        turbine_count: Number of operational turbines
+        total_turbines: Total number of turbines in the wind farm (default: 131)
+        availability_loss: Total availability loss factor (default: 0.08)
+
+    Returns:
+        Correction factor value
+    """
+    # Inner function to calculate availability loss for a specific number of turbines
+    def availability_loss_for_count(count):
+        return availability_loss * (count - 1) / (total_turbines - 1)
+
+    # Calculate and return the correction factor
+    return (1 - availability_loss) / (1 - availability_loss_for_count(turbine_count))
 
 
-def ep_cf(x):
-    M = len(x)
-    x = x.mean()
-    x = round(x * CF(M), 2)
-    return x
+def apply_energy_correction_factor(energy_values):
+    """
+    Apply correction factor to energy production values based on number of operational turbines.
+
+    This function:
+    1. Calculates the mean energy value
+    2. Applies the correction factor based on the number of values (turbines)
+    3. Rounds the result to 2 decimal places
+
+    Args:
+        energy_values: Series of energy production values
+
+    Returns:
+        Corrected energy production value
+    """
+    # Get the number of operational turbines
+    turbine_count = len(energy_values)
+
+    # Calculate the mean energy value
+    mean_energy = energy_values.mean()
+
+    # Apply correction factor and round to 2 decimal places
+    corrected_energy = round(mean_energy * calculate_correction_factor(turbine_count), 2)
+
+    return corrected_energy
 
 
-def cf_column(x):
-    M = len(x)
-    return CF(M)
+def get_correction_factor_value(values):
+    """
+    Get the correction factor value based on the number of values.
+
+    Args:
+        values: Series of values
+
+    Returns:
+        Correction factor value
+    """
+    # Get the number of values (turbines)
+    turbine_count = len(values)
+
+    # Return the correction factor
+    return calculate_correction_factor(turbine_count)
 
 
-def Epot_case_2(df):
-    CB2 = pd.read_excel("./config/CB2.xlsx")
-    CB2 = CB2.astype(int).drop_duplicates()
-    CB2_interp = interp1d(CB2.Wind, CB2.Power, kind="linear", fill_value="extrapolate")
+# ============================= POTENTIAL ENERGY CALCULATION FUNCTIONS =============================
 
-    # Debug information
-    logger.debug(f"Epot_case_2 called with DataFrame of shape {df.shape}")
+def calculate_potential_energy_from_met_mast(df):
+    """
+    Calculate potential energy production using meteorological mast wind speed data (Case 2).
+
+    This function:
+    1. Loads the power curve from CB2.xlsx
+    2. Creates an interpolation function from the power curve
+    3. Calculates the mean wind speed from available met mast columns
+    4. Applies the power curve to estimate potential energy production
+
+    Args:
+        df: DataFrame containing meteorological data
+
+    Returns:
+        Series of potential energy values
+    """
+    # Load power curve data
+    power_curve = pd.read_excel("./config/CB2.xlsx")
+    power_curve = power_curve.astype(int).drop_duplicates()
+
+    # Create interpolation function from power curve
+    power_curve_interpolator = interp1d(
+        power_curve.Wind,
+        power_curve.Power,
+        kind="linear",
+        fill_value="extrapolate"
+    )
+
+    # Log debug information
+    logger.debug(f"calculate_potential_energy_from_met_mast called with DataFrame of shape {df.shape}")
     logger.debug(f"Available columns in DataFrame: {list(df.columns)}")
 
-    # List of desired columns
-    desired_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
-    logger.debug(f"Looking for columns: {desired_columns}")
+    # Define the met mast columns to use for wind speed
+    met_mast_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
+    logger.debug(f"Looking for met mast columns: {met_mast_columns}")
 
-    # Filter out the columns that exist in df
-    available_columns = [col for col in desired_columns if col in df.columns]
-    logger.debug(f"Found columns: {available_columns}")
+    # Filter to only use columns that exist in the DataFrame
+    available_met_mast_columns = [col for col in met_mast_columns if col in df.columns]
+    logger.debug(f"Found met mast columns: {available_met_mast_columns}")
 
-    # Calculate the mean of the available columns for all rows
-    if available_columns:
-        mean_wind_speed = df[available_columns].mean(axis=1)
-        # Apply the interpolation function directly to this array
-        Epot = CB2_interp(mean_wind_speed) / 6
-        return Epot
+    # Calculate potential energy if any met mast columns are available
+    if available_met_mast_columns:
+        # Calculate mean wind speed across available columns
+        mean_wind_speed = df[available_met_mast_columns].mean(axis=1)
+
+        # Apply power curve and divide by 6 (10-minute intervals per hour)
+        potential_energy = power_curve_interpolator(mean_wind_speed) / 6
+        return potential_energy
     else:
-        raise ValueError("None of the specified columns are present in the DataFrame.")
+        raise ValueError("None of the specified met mast columns are present in the DataFrame.")
 
 
-def Epot_case_3(period):
-    NWD = pd.read_excel("./config/NWD.xlsx", index_col=0)
-    SWF = pd.read_excel("./config/SWF.xlsx", index_col=0)
-    CB2 = pd.read_excel("./config/CB2.xlsx")
-    PWE = 0.92
-    NAE = 0
-    CB2 = CB2.astype(int).drop_duplicates()
-    CB2_interp = interp1d(CB2.Wind, CB2.Power, kind="linear", fill_value="extrapolate")
+def calculate_potential_energy_from_statistics(period):
+    """
+    Calculate potential energy production using statistical wind distribution data (Case 3).
 
-    bins_v = np.arange(1, 26, 1)
-    for v in bins_v:
-        NAE += CB2_interp(v) * NWD.loc[v].values[0]
+    This function:
+    1. Loads normalized wind distribution (NWD), seasonal wind factors (SWF), and power curve (CB2)
+    2. Calculates normalized annual energy (NAE) using the wind distribution and power curve
+    3. Adjusts NAE for the specific period using seasonal factors
 
-    NAE *= PWE
-    Epot = NAE * (1 / 8760) * (1 / 6) * SWF.loc[period].values[0]
-    return Epot
+    Args:
+        period: Period in YYYY-MM format
+
+    Returns:
+        Potential energy value for the period
+    """
+    # Load required configuration files
+    normalized_wind_dist = pd.read_excel("./config/NWD.xlsx", index_col=0)
+    seasonal_wind_factors = pd.read_excel("./config/SWF.xlsx", index_col=0)
+    power_curve = pd.read_excel("./config/CB2.xlsx")
+
+    # Define constants
+    park_wind_efficiency = 0.92  # PWE
+    normalized_annual_energy = 0  # NAE
+
+    # Process power curve data
+    power_curve = power_curve.astype(int).drop_duplicates()
+    power_curve_interpolator = interp1d(
+        power_curve.Wind,
+        power_curve.Power,
+        kind="linear",
+        fill_value="extrapolate"
+    )
+
+    # Calculate normalized annual energy using wind distribution
+    wind_speed_bins = np.arange(1, 26, 1)
+    for wind_speed in wind_speed_bins:
+        normalized_annual_energy += (
+            power_curve_interpolator(wind_speed) *
+            normalized_wind_dist.loc[wind_speed].values[0]
+        )
+
+    # Apply park wind efficiency
+    normalized_annual_energy *= park_wind_efficiency
+
+    # Calculate potential energy for the specific period
+    # Divide by 8760 (hours in year), by 6 (10-min intervals per hour), and multiply by seasonal factor
+    potential_energy = (
+        normalized_annual_energy *
+        (1 / 8760) *
+        (1 / 6) *
+        seasonal_wind_factors.loc[period].values[0]
+    )
+
+    return potential_energy
 
 
-class read_files:
-    # ------------------------------grd-------------------------------------
+# ============================= DATA LOADING FUNCTIONS =============================
+
+class DataLoader:
+    """
+    Class containing methods to load and preprocess different types of data files.
+
+    This class provides static methods to load:
+    - Grid data (grd): Power output data
+    - Counter data (cnt): Energy production counters
+    - Summary data (sum): Alarm events
+    - Turbine data (tur): Turbine operational data
+    - Meteorological data (met): Wind speed and direction from met masts
+    - Digital input data (din): Curtailment and other digital signals
+    """
+
+    # ------------------------------Grid Data-------------------------------------
     @staticmethod
-    def read_grd(period):
+    def load_grid_data(period):
+        """
+        Load grid data (power output) for the specified period.
 
-        grd = read_csv_data(data_type="grd", period=period) # Use renamed function
-        grd["TimeStamp"] = pd.to_datetime(grd["TimeStamp"])
+        Args:
+            period: Period in YYYY-MM format
 
-        return grd
+        Returns:
+            DataFrame containing grid data with parsed timestamps
+        """
+        # Load grid data from CSV
+        grid_data = read_csv_data(data_type="grd", period=period)
 
-    # ------------------------------cnt-------------------------------------
+        # Convert TimeStamp column to datetime
+        grid_data["TimeStamp"] = pd.to_datetime(grid_data["TimeStamp"])
+
+        return grid_data
+
+    # ------------------------------Counter Data-------------------------------------
     @staticmethod
-    def read_cnt(period):
+    def load_counter_data(period):
+        """
+        Load counter data (energy production) for the specified period.
 
-        cnt = read_csv_data(data_type="cnt",  period=period) # Use renamed function
-        cnt["TimeStamp"] = pd.to_datetime(cnt["TimeStamp"])
+        Args:
+            period: Period in YYYY-MM format
 
-        return cnt
+        Returns:
+            DataFrame containing counter data with parsed timestamps
+        """
+        # Load counter data from CSV
+        counter_data = read_csv_data(data_type="cnt", period=period)
 
-    # -----------------------------sum---------------------------
+        # Convert TimeStamp column to datetime
+        counter_data["TimeStamp"] = pd.to_datetime(counter_data["TimeStamp"])
+
+        return counter_data
+
+    # -----------------------------Alarm Summary Data---------------------------
     @staticmethod
-    def read_sum(period):
+    def load_alarm_data(period):
+        """
+        Load alarm summary data for the specified period.
 
-        alarms = read_csv_data("sum", period) # Use renamed function
+        This function:
+        1. Loads alarm data from CSV
+        2. Cleans and preprocesses the data
+        3. Filters to include only relevant turbines
 
-        alarms.dropna(subset=["Alarmcode"], inplace=True)
-        alarms["TimeOn"] = pd.to_datetime(alarms["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f")
-        alarms["TimeOff"] = pd.to_datetime(alarms["TimeOff"], format="%Y-%m-%d %H:%M:%S.%f")
+        Args:
+            period: Period in YYYY-MM format
 
-        alarms = alarms[alarms.StationNr >= 2307405]
-        alarms = alarms[alarms.StationNr <= 2307535].reset_index(drop=True)
-        alarms.reset_index(drop=True, inplace=True)
-        alarms["Alarmcode"] = alarms.Alarmcode.astype(int)
-        alarms["Parameter"] = alarms.Parameter.str.replace(" ", "")
+        Returns:
+            DataFrame containing processed alarm data
+        """
+        # Load alarm data from CSV
+        alarm_data = read_csv_data("sum", period)
 
-        return alarms
+        # Remove rows with missing alarm codes
+        alarm_data.dropna(subset=["Alarmcode"], inplace=True)
 
-    # ------------------------------tur---------------------------
+        # Convert time columns to datetime
+        alarm_data["TimeOn"] = pd.to_datetime(alarm_data["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f")
+        alarm_data["TimeOff"] = pd.to_datetime(alarm_data["TimeOff"], format="%Y-%m-%d %H:%M:%S.%f")
+
+        # Filter to include only relevant turbines (station numbers)
+        alarm_data = alarm_data[alarm_data.StationNr >= 2307405]
+        alarm_data = alarm_data[alarm_data.StationNr <= 2307535].reset_index(drop=True)
+
+        # Reset index and convert data types
+        alarm_data.reset_index(drop=True, inplace=True)
+        alarm_data["Alarmcode"] = alarm_data.Alarmcode.astype(int)
+
+        # Remove spaces from Parameter column
+        alarm_data["Parameter"] = alarm_data.Parameter.str.replace(" ", "")
+
+        return alarm_data
+
+    # ------------------------------Turbine Data---------------------------
     @staticmethod
-    def read_tur(period):
+    def load_turbine_data(period):
+        """
+        Load turbine operational data for the specified period.
 
-        tur = read_csv_data("tur", period) # Use renamed function
-        tur["TimeStamp"] = pd.to_datetime(tur["TimeStamp"])
+        Args:
+            period: Period in YYYY-MM format
 
-        return tur
+        Returns:
+            DataFrame containing turbine data with parsed timestamps
+        """
+        # Load turbine data from CSV
+        turbine_data = read_csv_data("tur", period)
 
-    # ------------------------------met---------------------------
+        # Convert TimeStamp column to datetime
+        turbine_data["TimeStamp"] = pd.to_datetime(turbine_data["TimeStamp"])
+
+        return turbine_data
+
+    # ------------------------------Meteorological Data---------------------------
     @staticmethod
-    def read_met(period):
+    def load_met_data(period):
+        """
+        Load meteorological data for the specified period.
 
-        met = read_csv_data("met", period) # Use renamed function
-        met["TimeStamp"] = pd.to_datetime(met["TimeStamp"])
-        logger.debug(f"[read_met] Pre-pivot columns: {list(met.columns)}")
-        logger.debug(f"[read_met] Pre-pivot shape: {met.shape}")
+        This function:
+        1. Loads met data from CSV
+        2. Pivots the data to create columns for each station and measurement
+        3. Flattens the multi-level column names
 
-        met = met.pivot_table(
+        Args:
+            period: Period in YYYY-MM format
+
+        Returns:
+            DataFrame containing processed meteorological data
+        """
+        # Load meteorological data from CSV
+        met_data = read_csv_data("met", period)
+
+        # Convert TimeStamp column to datetime
+        met_data["TimeStamp"] = pd.to_datetime(met_data["TimeStamp"])
+
+        # Log debug information before pivoting
+        logger.debug(f"[load_met_data] Pre-pivot columns: {list(met_data.columns)}")
+        logger.debug(f"[load_met_data] Pre-pivot shape: {met_data.shape}")
+
+        # Pivot the data to create columns for each station and measurement
+        met_data = met_data.pivot_table(
             index="TimeStamp",
             columns="StationId",
             values=["met_WindSpeedRot_mean", "met_WinddirectionRot_mean"],
             aggfunc="mean",
         )
 
-        met.columns = met.columns.to_flat_index()
+        # Convert multi-level column index to flat index
+        met_data.columns = met_data.columns.to_flat_index()
 
-        met.reset_index(inplace=True)
+        # Reset index to make TimeStamp a column again
+        met_data.reset_index(inplace=True)
 
-        met.columns = ["_".join(str(v) for v in tup) if type(tup) is tuple else tup for tup in met.columns]
-        logger.debug(f"[read_met] Post-pivot columns: {list(met.columns)}")
-        logger.debug(f"[read_met] Post-pivot shape: {met.shape}")
+        # Create readable column names by joining the multi-level names
+        met_data.columns = ["_".join(str(v) for v in tup) if type(tup) is tuple else tup for tup in met_data.columns]
 
-        return met
+        # Log debug information after pivoting
+        logger.debug(f"[load_met_data] Post-pivot columns: {list(met_data.columns)}")
+        logger.debug(f"[load_met_data] Post-pivot shape: {met_data.shape}")
 
+        return met_data
+
+    # ------------------------------Digital Input Data---------------------------
     @staticmethod
-    def read_din(period):
+    def load_digital_input_data(period):
+        """
+        Load digital input data (curtailment signals) for the specified period.
 
-        din = read_csv_data("din", period) # Use renamed function
-        din["TimeStamp"] = pd.to_datetime(din["TimeStamp"])
+        Args:
+            period: Period in YYYY-MM format
 
-        return din
+        Returns:
+            DataFrame containing digital input data with parsed timestamps
+        """
+        # Load digital input data from CSV
+        digital_input_data = read_csv_data("din", period)
 
+        # Convert TimeStamp column to datetime
+        digital_input_data["TimeStamp"] = pd.to_datetime(digital_input_data["TimeStamp"])
+
+        return digital_input_data
+
+    # ------------------------------Load All Data---------------------------
     @staticmethod
-    def read_all(period):
+    def load_all_data(period):
+        """
+        Load all data types for the specified period.
+
+        Args:
+            period: Period in YYYY-MM format
+
+        Returns:
+            Tuple of DataFrames (met_data, turbine_data, alarm_data, counter_data, grid_data, digital_input_data)
+        """
         return (
-            read_files.read_met(period),
-            read_files.read_tur(period),
-            read_files.read_sum(period),
-            read_files.read_cnt(period),
-            read_files.read_grd(period),
-            read_files.read_din(period),
+            DataLoader.load_met_data(period),
+            DataLoader.load_turbine_data(period),
+            DataLoader.load_alarm_data(period),
+            DataLoader.load_counter_data(period),
+            DataLoader.load_grid_data(period),
+            DataLoader.load_digital_input_data(period),
         )
 
 
+# ============================= MAIN CALCULATION FUNCTION =============================
+
 def full_calculation(period):
-    # reading all files with function
-    met, tur, alarms, cnt, grd, din = read_files.read_all(period)
+    """
+    Perform the full availability calculation for the specified period.
+
+    This function:
+    1. Loads all required data for the period
+    2. Performs data validation and cleaning
+    3. Processes alarms and calculates real periods
+    4. Calculates energy loss by category
+    5. Returns a DataFrame with detailed availability results
+
+    Args:
+        period: Period in YYYY-MM format
+
+    Returns:
+        DataFrame containing detailed availability results
+    """
+    # Load all data files for the period
+    met_data, turbine_data, alarm_data, counter_data, grid_data, digital_input_data = DataLoader.load_all_data(period)
 
     # ------------------------------------------------------------
+    # Define period start and end times
 
+    # Set period start to first day of month at midnight
     period_start = pd.Timestamp(f"{period}-01 00:00:00.000")
 
-    # if currentPeriod_dt <= period_dt:  # if calculating ongoing month
-    period_end = cnt.TimeStamp.max()
-    # else:
-    #     period_end = pd.Timestamp(f"{next_period}-01 00:10:00.000")
+    # Set period end to the latest timestamp in the counter data
+    period_end = counter_data.TimeStamp.max()
 
-    full_range_var = pd.date_range(period_start, period_end, freq="10min")
+    # Create a full time range with 10-minute intervals for the entire period
+    full_time_range = pd.date_range(period_start, period_end, freq="10min")
 
     # ----------------------Sanity check---------------------------
-    sanity_grd = grd.query(
+    # Filter out invalid data points using sanity checks
+
+    # Check grid data for valid power values
+    valid_grid_indices = grid_data.query(
         """-1000 <= wtc_ActPower_min <= 2600 & -1000 <= wtc_ActPower_max <= 2600 & -1000 <= wtc_ActPower_mean <= 2600"""
     ).index
-    sanity_cnt = cnt.query("""-500 <= wtc_kWG1Tot_accum <= 500 & 0 <= wtc_kWG1TotE_accum <= 500""").index
-    sanity_tur = tur.query("""0 <= wtc_AcWindSp_mean <= 50 & 0 <= wtc_ActualWindDirection_mean <= 360""").index
-    # sanity_met = met.query('''0 <= met_WindSpeedRot_mean <= 50 & 0 <= met_WinddirectionRot_mean <= 360''').index
-    sanity_din = din.query("""0 <= wtc_PowerRed_timeon <= 600""").index
 
-    # grd_outliers = grd.loc[grd.index.difference(sanity_grd)]
-    # cnt_outliers = cnt.loc[cnt.index.difference(sanity_cnt)].groupby('StationId').apply(
-    #     lambda df: df.reindex(index=full_range_var)
-    # )
+    # Check counter data for valid energy accumulation values
+    valid_counter_indices = counter_data.query(
+        """-500 <= wtc_kWG1Tot_accum <= 500 & 0 <= wtc_kWG1TotE_accum <= 500"""
+    ).index
 
-    # cnt_outliers = cnt.groupby('StationId').apply(
-    #     lambda df: df.reindex(index=full_range_var))
+    # Check turbine data for valid wind speed and direction values
+    valid_turbine_indices = turbine_data.query(
+        """0 <= wtc_AcWindSp_mean <= 50 & 0 <= wtc_ActualWindDirection_mean <= 360"""
+    ).index
 
-    # cnt_outliers = cnt_outliers.loc[cnt_outliers.wtc_kWG1TotE_accum.isna()]
+    # Check digital input data for valid curtailment values
+    valid_digital_input_indices = digital_input_data.query(
+        """0 <= wtc_PowerRed_timeon <= 600"""
+    ).index
 
-    # tur_outliers = tur.loc[tur.index.difference(sanity_tur)]
-    # # met_outliers = met.loc[met.index.difference(sanity_met)]
-    # din_outliers = din.loc[din.index.difference(sanity_din)]
+    # Note: Commented out code for saving outliers to Excel files
+    # This could be uncommented if outlier analysis is needed
 
-    # with pd.ExcelWriter(f'./monthly_data/results/outliers/{period}_outliers.xlsx') as writer:
-    #     grd_outliers.to_excel(writer, sheet_name='grd')
-    #     cnt_outliers.to_excel(writer, sheet_name='cnt')
-    #     tur_outliers.to_excel(writer, sheet_name='tur')
-    #     din_outliers.to_excel(writer, sheet_name='din')
+    # Apply the filters to keep only valid data
+    grid_data = grid_data.loc[grid_data.index.isin(valid_grid_indices)]
+    counter_data = counter_data.loc[counter_data.index.isin(valid_counter_indices)]
+    turbine_data = turbine_data.loc[turbine_data.index.isin(valid_turbine_indices)]
+    digital_input_data = digital_input_data.loc[digital_input_data.index.isin(valid_digital_input_indices)]
 
-    grd = grd.loc[grd.index.isin(sanity_grd)]
-    cnt = cnt.loc[cnt.index.isin(sanity_cnt)]
-    tur = tur.loc[tur.index.isin(sanity_tur)]
-    # met = met.loc[met.index.isin(sanity_met)]
-    din = din.loc[din.index.isin(sanity_din)]
+    # Create a full time range with 10-minute intervals for the entire period
+    full_time_range = pd.date_range(period_start, period_end, freq="10min")
 
-    # --------------------------error list-------------------------
+    # --------------------------Load error list-------------------------
+    # Load the error list from Excel file
     error_list = pd.read_excel(r"./config/Alarmes List Norme RDS-PP_Tarec.xlsx")
 
-    error_list.Number = error_list.Number.astype(int)  # ,errors='ignore'
-
+    # Convert Number column to integer and ensure no duplicates
+    error_list.Number = error_list.Number.astype(int)
     error_list.drop_duplicates(subset=["Number"], inplace=True)
 
+    # Rename Number column to match Alarmcode in alarm data
     error_list.rename(columns={"Number": "Alarmcode"}, inplace=True)
 
     # ------------------------------------------------------
+    # Get alarm codes for error types 0 and 1 (Tarec and Siemens)
+    alarm_codes_0_1 = error_list.loc[error_list["Error Type"].isin([1, 0])].Alarmcode
 
-    # for i in range(1, 12):  # append last months alarms
+    # ------------------------------Process alarm data-------------------------------------
 
-    #     ith_previous_period_dt = period_dt + relativedelta(months=-i)
-    #     ith_previous_period = ith_previous_period_dt.strftime("%Y-%m")
+    # Store original TimeOn and TimeOff values
+    alarm_data["OldTimeOn"] = alarm_data["TimeOn"]
+    alarm_data["OldTimeOff"] = alarm_data["TimeOff"]
 
-    #     try:
-    #         previous_alarms = read_files.read_sum(ith_previous_period)
-    #         alarms = alarms.append(previous_alarms)
+    # Log information about missing TimeOff values
+    logger.info(f"TimeOff NAs = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1)].TimeOff.isna().sum()}")
 
-    #     except FileNotFoundError:
-    #         print(f"Previous mounth -{i} alarms File not found")
-
-    # ------------------------------------------------------
-    alarms_0_1 = error_list.loc[error_list["Error Type"].isin([1, 0])].Alarmcode
-
-    # ------------------------------Fill NA TimeOff-------------------------------------
-
-    alarms["OldTimeOn"] = alarms["TimeOn"]
-    alarms["OldTimeOff"] = alarms["TimeOff"]
-
-    logger.info(f"TimeOff NAs = {alarms.loc[alarms.Alarmcode.isin(alarms_0_1)].TimeOff.isna().sum()}")
-
-    if alarms.loc[alarms.Alarmcode.isin(alarms_0_1)].TimeOff.isna().sum():
+    if alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1)].TimeOff.isna().sum():
         logger.info(
-            f"Earliest TimeOn when TimeOff is NA = {alarms.loc[alarms.Alarmcode.isin(alarms_0_1) & alarms.TimeOff.isna()].TimeOn.min()}"
+            f"Earliest TimeOn when TimeOff is NA = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1) & alarm_data.TimeOff.isna()].TimeOn.min()}"
         )
 
-    alarms.loc[alarms.Alarmcode.isin(alarms_0_1), "TimeOff"] = alarms.loc[
-        alarms.Alarmcode.isin(alarms_0_1), "TimeOff"
+    # Fill missing TimeOff values with period end
+    alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1), "TimeOff"] = alarm_data.loc[
+        alarm_data.Alarmcode.isin(alarm_codes_0_1), "TimeOff"
     ].fillna(period_end)
 
-    # ------------------------------Alarms ending after period end ----------------------
+    # ------------------------------Limit alarms to period boundaries----------------------
 
-    alarms.loc[(alarms.TimeOff > period_end), "TimeOff"] = period_end
+    # Cap alarms ending after period end
+    alarm_data.loc[(alarm_data.TimeOff > period_end), "TimeOff"] = period_end
 
     # ------------------------------Keep only alarms active in period-------------
-    alarms.reset_index(inplace=True, drop=True)
-    # ----dropping 1 0 alarms
-    alarms.drop(
-        alarms.query("(TimeOn < @period_start) & (TimeOff < @period_start) & Alarmcode.isin(@alarms_0_1)").index,
+    alarm_data.reset_index(inplace=True, drop=True)
+
+    # Drop alarms that ended before period start
+    alarm_data.drop(
+        alarm_data.query("(TimeOn < @period_start) & (TimeOff < @period_start) & Alarmcode.isin(@alarm_codes_0_1)").index,
         inplace=True,
     )
 
-    alarms.drop(alarms.query("(TimeOn > @period_end)").index, inplace=True)
-    alarms.reset_index(drop=True, inplace=True)
-    # ------------------------------Alarms starting before period start -----------------
-    warning_date = alarms.TimeOn.min()
+    # Drop alarms that start after period end
+    alarm_data.drop(alarm_data.query("(TimeOn > @period_end)").index, inplace=True)
+    alarm_data.reset_index(drop=True, inplace=True)
 
-    alarms.loc[(alarms.TimeOn < period_start) & (alarms.Alarmcode.isin(alarms_0_1)), "TimeOn"] = period_start
+    # ------------------------------Handle alarms starting before period start-----------------
+    warning_date = alarm_data.TimeOn.min()
 
-    # ----dropping non 1 0 alarms
-    alarms.drop(
-        alarms.query("~Alarmcode.isin(@alarms_0_1) & (TimeOn < @period_start)").index,
+    # Set start time to period start for alarms that started before
+    alarm_data.loc[(alarm_data.TimeOn < period_start) & (alarm_data.Alarmcode.isin(alarm_codes_0_1)), "TimeOn"] = period_start
+
+    # Drop non-error alarms that started before period start
+    alarm_data.drop(
+        alarm_data.query("~Alarmcode.isin(@alarm_codes_0_1) & (TimeOn < @period_start)").index,
         inplace=True,
     )
-    alarms.reset_index(drop=True, inplace=True)
+    alarm_data.reset_index(drop=True, inplace=True)
 
-    """ label scada alarms with coresponding error type
-    and only keep alarm codes in error list"""
-    result_sum = pd.merge(alarms, error_list, on="Alarmcode", how="inner", sort=False)
+    # ------------------------------Match alarms with error types------------------------------
+    # Merge alarm data with error list to get error types
+    alarm_summary = pd.merge(alarm_data, error_list, on="Alarmcode", how="inner", sort=False)
 
-    # Remove warnings
-    result_sum = result_sum.loc[result_sum["Error Type"].isin([1, 0])]
+    # Keep only alarms with error types 0 and 1
+    alarm_summary = alarm_summary.loc[alarm_summary["Error Type"].isin([1, 0])]
 
-    # Determine alarms real periods applying cascade method
+    # ------------------------------Calculate real alarm periods------------------------------
+    # Apply cascade method to handle overlapping alarms
+    processed_alarms = apply_cascade_method(alarm_summary)
+    processed_alarms = handle_alarm_code_1005_overlap(processed_alarms)
 
-    # apply cascade
-    alarms_result_sum = apply_cascade(result_sum)
-    alarms_result_sum = remove_1005_overlap(alarms_result_sum)
+    # -------------------Process code 2006 alarms (special case)-----------------------------
+    logger.info("Processing code 2006 alarms")
 
-    # -------------------2006  binning --------------------------------------
+    # Extract code 2006 alarms
+    alarms_code_2006 = alarm_data.loc[(alarm_data["Alarmcode"] == 2006)].copy()
+    alarms_code_2006["NewTimeOn"] = alarms_code_2006["TimeOn"]
 
-    logger.info("Binning 2006 alarms")
-
-    alarms_df_2006 = alarms.loc[(alarms["Alarmcode"] == 2006)].copy()
-    # alarms_df_2006['TimeOff'] = alarms_df_2006['NewTimeOn']
-    alarms_df_2006["NewTimeOn"] = alarms_df_2006["TimeOn"]
-
-    alarms_df_2006 = alarms_df_2006.query(
+    # Filter to include only alarms active during the period
+    alarms_code_2006 = alarms_code_2006.query(
         "(@period_start < TimeOn < @period_end) | \
-                                   (@period_start < TimeOff < @period_end) | \
-                                   ((TimeOn < @period_start) & (@period_end < TimeOff))"
+        (@period_start < TimeOff < @period_end) | \
+        ((TimeOn < @period_start) & (@period_end < TimeOff))"
     )
 
-    if not alarms_df_2006.empty:
-        alarms_df_2006["TimeOff"] = alarms_df_2006["TimeOff"].fillna(period_end)
-        alarms_df_2006_10min = realperiod_10mins(alarms_df_2006, "2006")
+    # Process code 2006 alarms if any exist
+    if not alarms_code_2006.empty:
+        # Fill missing TimeOff values
+        alarms_code_2006["TimeOff"] = alarms_code_2006["TimeOff"].fillna(period_end)
 
-        alarms_df_2006_10min = alarms_df_2006_10min.groupby("TimeStamp", group_keys=True).agg(
+        # Convert to 10-minute intervals
+        alarms_code_2006_intervals = convert_to_10min_intervals(alarms_code_2006, "2006")
+
+        # Aggregate by timestamp
+        alarms_code_2006_intervals = alarms_code_2006_intervals.groupby("TimeStamp", group_keys=True).agg(
             {"RealPeriod": "sum", "StationNr": "first"}
         )
 
-        alarms_df_2006_10min.reset_index(inplace=True)
+        alarms_code_2006_intervals.reset_index(inplace=True)
 
-        alarms_df_2006_10min.rename(
+        # Rename columns for clarity
+        alarms_code_2006_intervals.rename(
             columns={"StationNr": "StationId", "RealPeriod": "Duration 2006(s)"},
             inplace=True,
         )
 
-        alarms_df_2006_10min["Duration 2006(s)"] = alarms_df_2006_10min["Duration 2006(s)"].dt.total_seconds().fillna(0)
+        # Convert timedelta to seconds
+        alarms_code_2006_intervals["Duration 2006(s)"] = alarms_code_2006_intervals["Duration 2006(s)"].dt.total_seconds().fillna(0)
 
     else:
-        logger.info("No 2006 alarms found")
-        alarms_df_2006_10min = pd.DataFrame(columns=["TimeStamp", "Duration 2006(s)", "StationId"])
-    # ----------------------- binning --------------------------------------
+        logger.info("No code 2006 alarms found")
+        alarms_code_2006_intervals = pd.DataFrame(columns=["TimeStamp", "Duration 2006(s)", "StationId"])
 
-    logger.info("Binning alarms")
-    alarms_df_clean = alarms_result_sum.loc[(alarms_result_sum["RealPeriod"].dt.total_seconds() != 0)].copy()
+    # ----------------------- Convert other alarms to 10-minute intervals --------------------------------------
+    logger.info("Converting alarms to 10-minute intervals")
 
-    alarms_df_clean_10min = realperiod_10mins(alarms_df_clean)
-    alarms_df_clean_10min.reset_index(inplace=True, drop=True)
+    # Filter out zero-duration alarms
+    non_zero_alarms = processed_alarms.loc[(processed_alarms["RealPeriod"].dt.total_seconds() != 0)].copy()
 
-    # # ----------------------- ---------------------------------
+    # Convert to 10-minute intervals
+    alarm_intervals = convert_to_10min_intervals(non_zero_alarms)
+    alarm_intervals.reset_index(inplace=True, drop=True)
 
-    alarms_binned = (
-        alarms_df_clean_10min.groupby(["StationNr", "TimeStamp"], group_keys=True)
+    # ----------------------- Aggregate alarms by station and timestamp ---------------------------------
+    # Group by station and timestamp, summing durations
+    aggregated_alarms = (
+        alarm_intervals.groupby(["StationNr", "TimeStamp"], group_keys=True)
         .agg(
             {
                 "RealPeriod": "sum",
@@ -553,9 +929,10 @@ def full_calculation(period):
         .reset_index()
     )
 
-    alarms_binned = (
-        alarms_binned.groupby("StationNr", group_keys=True)
-        .apply(lambda df: full_range(df, full_range_var), include_groups=False)
+    # Expand to include all timestamps in the full time range
+    aggregated_alarms = (
+        aggregated_alarms.groupby("StationNr", group_keys=True)
+        .apply(lambda df: expand_to_full_time_range(df, full_time_range), include_groups=False)
         .reset_index()
         .rename(
             columns={
@@ -567,38 +944,37 @@ def full_calculation(period):
         )
     )
 
-    alarms_binned["Period 0(s)"] = alarms_binned["Period 0(s)"].dt.total_seconds().fillna(0)
-    alarms_binned["Period 1(s)"] = alarms_binned["Period 1(s)"].dt.total_seconds().fillna(0)
-    alarms_binned["RealPeriod"] = alarms_binned["RealPeriod"].dt.total_seconds().fillna(0)
+    # Convert timedeltas to seconds and fill NAs with 0
+    aggregated_alarms["Period 0(s)"] = aggregated_alarms["Period 0(s)"].dt.total_seconds().fillna(0)
+    aggregated_alarms["Period 1(s)"] = aggregated_alarms["Period 1(s)"].dt.total_seconds().fillna(0)
+    aggregated_alarms["RealPeriod"] = aggregated_alarms["RealPeriod"].dt.total_seconds().fillna(0)
 
-    alarms_binned.drop(
-        alarms_binned.loc[alarms_binned["TimeStamp"] == period_start].index,
+    # Remove the first timestamp (period start)
+    aggregated_alarms.drop(
+        aggregated_alarms.loc[aggregated_alarms["TimeStamp"] == period_start].index,
         inplace=True,
     )
 
-    logger.info("Alarms binning completed")
+    logger.info("Alarm aggregation completed")
 
-    # ----------Merging with 2006 alarms
-
-    alarms_binned = pd.merge(
-        alarms_binned, alarms_df_2006_10min, on=["TimeStamp", "StationId"], how="left"
+    # ----------Merge with code 2006 alarms----------
+    aggregated_alarms = pd.merge(
+        aggregated_alarms, alarms_code_2006_intervals, on=["TimeStamp", "StationId"], how="left"
     ).reset_index(drop=True)
 
-    # -------merging cnt, grd, tur, met,upsampled------
-    # merging upsampled alarms with energy production
+    # -------Merge with other data sources------
+    # Merge with counter data (energy production)
+    logger.info("Merging alarm data with energy production data")
+    results = pd.merge(aggregated_alarms, counter_data, on=["TimeStamp", "StationId"], how="left").reset_index(drop=True)
 
-    logger.info("Merging upsampled alarms with energy production")
-    results = pd.merge(alarms_binned, cnt, on=["TimeStamp", "StationId"], how="left").reset_index(drop=True)
-
-    # merging last dataframe with power
-    results = pd.merge(results, grd, on=["TimeStamp", "StationId"], how="left")
-
+    # Merge with grid data (power output)
+    results = pd.merge(results, grid_data, on=["TimeStamp", "StationId"], how="left")
     results.reset_index(drop=True, inplace=True)
 
-    # merging last dataframe with turbine windspeed data
+    # Merge with turbine data (wind speed and direction)
     results = pd.merge(
         results,
-        tur[
+        turbine_data[
             [
                 "TimeStamp",
                 "StationId",
@@ -610,246 +986,282 @@ def full_calculation(period):
         how="left",
     )
 
-    # merging last dataframe with met mast data
-    logger.debug(f"[full_calculation] Pre-MET merge 'met' columns: {list(met.columns)}")
-    logger.debug(f"[full_calculation] Pre-MET merge 'met' shape: {met.shape}")
-    results = pd.merge(results, met, on="TimeStamp", how="left")
+    # Merge with meteorological data
+    logger.debug(f"[full_calculation] Pre-MET merge 'results' shape: {results.shape}")
+    results = pd.merge(results, met_data, on="TimeStamp", how="left")
     logger.debug(f"[full_calculation] Post-MET merge 'results' columns: {list(results.columns)}")
     logger.debug(f"[full_calculation] Post-MET merge 'results' shape: {results.shape}")
 
-    # merging last dataframe with curtailement
-    results = pd.merge(results, din, on=["StationId", "TimeStamp"], how="left")
+    # Merge with digital input data (curtailment)
+    results = pd.merge(results, digital_input_data, on=["StationId", "TimeStamp"], how="left")
     results = results.infer_objects()
     results["Duration 2006(s)"] = results["Duration 2006(s)"].fillna(0)
 
-    # -------- operational turbines mask --------------------------------------
-    mask_n = (
-        (results["wtc_kWG1TotE_accum"] > 0)
-        & (results["RealPeriod"] == 0)
-        & (results["wtc_ActPower_min"] > 0)
-        & (results["Duration 2006(s)"] == 0)
-        & (
+    # -------- Identify operational turbines --------------------------------------
+    # Create a mask for operational turbines (no alarms, producing energy)
+    operational_turbines_mask = (
+        (results["wtc_kWG1TotE_accum"] > 0)                # Producing energy
+        & (results["RealPeriod"] == 0)                     # No active alarms
+        & (results["wtc_ActPower_min"] > 0)                # Minimum power > 0
+        & (results["Duration 2006(s)"] == 0)               # No code 2006 alarms
+        & (                                                # Not curtailed or high power despite curtailment
             (results["wtc_PowerRed_timeon"] == 0)
             | ((results["wtc_PowerRed_timeon"] != 0) & (results["wtc_ActPower_max"] > 2200))
         )
     )
 
-    # -------- operational turbines -------------------------------------------
-    results_n = results.loc[mask_n].copy()
+    # -------- Calculate potential energy from operational turbines -------------------------------------------
+    # Extract data for operational turbines
+    operational_turbines = results.loc[operational_turbines_mask].copy()
 
-    results_n["Correction Factor"] = 0
-    results_n["Available Turbines"] = 0
+    # Add columns for correction factor calculation
+    operational_turbines["Correction Factor"] = 0
+    operational_turbines["Available Turbines"] = 0
 
-    Epot = (
-        results_n.groupby("TimeStamp", group_keys=True)
+    # Calculate potential energy using operational turbines
+    potential_energy = (
+        operational_turbines.groupby("TimeStamp", group_keys=True)
         .agg(
             {
-                "wtc_kWG1TotE_accum": ep_cf,
-                "Correction Factor": cf_column,
-                "Available Turbines": "count",
+                "wtc_kWG1TotE_accum": apply_energy_correction_factor,     # Apply correction factor to energy
+                "Correction Factor": get_correction_factor_value,          # Get correction factor
+                "Available Turbines": "count",                             # Count available turbines
             }
         )
         .copy()
     )
 
-    Epot = Epot.rename(columns={"wtc_kWG1TotE_accum": "Epot"})
+    # Rename column for clarity
+    potential_energy = potential_energy.rename(columns={"wtc_kWG1TotE_accum": "Epot"})
 
-    del results_n["Correction Factor"]
-    del results_n["Available Turbines"]
+    # Remove temporary columns from operational turbines
+    del operational_turbines["Correction Factor"]
+    del operational_turbines["Available Turbines"]
 
-    results_n = pd.merge(results_n, Epot, on="TimeStamp", how="left")
+    # Merge potential energy back to operational turbines
+    operational_turbines = pd.merge(operational_turbines, potential_energy, on="TimeStamp", how="left")
 
-    results_n["Epot"] = results_n["wtc_kWG1TotE_accum"]
+    # For operational turbines, potential energy equals actual energy
+    operational_turbines["Epot"] = operational_turbines["wtc_kWG1TotE_accum"]
 
-    results_no = results.loc[~mask_n].copy()
+    # Process non-operational turbines
+    non_operational_turbines = results.loc[~operational_turbines_mask].copy()
 
-    results_no = pd.merge(results_no, Epot, on="TimeStamp", how="left")
+    # Merge potential energy to non-operational turbines
+    non_operational_turbines = pd.merge(non_operational_turbines, potential_energy, on="TimeStamp", how="left")
 
-    mask = results_no["Epot"] < results_no["wtc_kWG1TotE_accum"]
+    # If actual energy exceeds potential energy, use actual energy as potential
+    mask_higher_actual = non_operational_turbines["Epot"] < non_operational_turbines["wtc_kWG1TotE_accum"]
+    non_operational_turbines.loc[mask_higher_actual, "Epot"] = non_operational_turbines.loc[mask_higher_actual, "wtc_kWG1TotE_accum"]
 
-    results_no.loc[mask, "Epot"] = results_no.loc[mask, "wtc_kWG1TotE_accum"]
+    # Combine operational and non-operational turbines
+    final_results = pd.concat([non_operational_turbines, operational_turbines], sort=False)
 
-    results_final = pd.DataFrame()
+    # Sort by station and timestamp
+    final_results = final_results.sort_values(["StationId", "TimeStamp"]).reset_index(drop=True)
 
-    results_final = pd.concat([results_no, results_n], sort=False)
+    # Log debug information
+    logger.debug(f"[full_calculation] Pre-Epot check 'final_results' columns: {list(final_results.columns)}")
+    logger.debug(f"[full_calculation] Pre-Epot check 'final_results' shape: {final_results.shape}")
 
-    results_final = results_final.sort_values(["StationId", "TimeStamp"]).reset_index(drop=True)
-    logger.debug(f"[full_calculation] Pre-Epot check 'results_final' columns: {list(results_final.columns)}")
-    logger.debug(f"[full_calculation] Pre-Epot check 'results_final' shape: {results_final.shape}")
-
+    # -------- Handle missing potential energy values --------------------------------------
     # Check if there are any NA values in the 'Epot' column
-    if results_final["Epot"].isna().any():
-        mask_Epot_case_2 = results_final["Epot"].isna()
-        na_count = mask_Epot_case_2.sum()
-        logger.info(f"Found {na_count} NA values in 'Epot' column, attempting to fill with Epot_case_2")
+    if final_results["Epot"].isna().any():
+        # Create mask for rows with missing Epot
+        missing_epot_mask = final_results["Epot"].isna()
+        missing_count = missing_epot_mask.sum()
+        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with met mast data")
 
-        # Debug the DataFrame before calling Epot_case_2
-        df_for_epot = results_final.loc[mask_Epot_case_2]
-        logger.debug(f"DataFrame for Epot_case_2 has shape {df_for_epot.shape}")
-        logger.debug(f"[full_calculation] 'df_for_epot' columns: {list(df_for_epot.columns)}") # Log columns here
+        # Extract rows with missing Epot
+        df_for_potential_energy = final_results.loc[missing_epot_mask]
+        logger.debug(f"DataFrame for potential energy calculation has shape {df_for_potential_energy.shape}")
+        logger.debug(f"[full_calculation] Columns available: {list(df_for_potential_energy.columns)}")
 
-        # Check if any of the required columns exist in the DataFrame
-        wind_cols = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
-        existing_cols = [col for col in wind_cols if col in df_for_epot.columns]
-        logger.info(f"Wind speed columns found in DataFrame: {existing_cols}")
+        # Check if required met mast columns exist
+        wind_speed_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
+        available_columns = [col for col in wind_speed_columns if col in df_for_potential_energy.columns]
+        logger.info(f"Wind speed columns found in DataFrame: {available_columns}")
 
-        # Try to get Epot values using Epot_case_2
-        Epot_case_2_var = None # Initialize variable
+        # Try to calculate potential energy using met mast data
+        potential_energy_values = None
         try:
-            Epot_case_2_var = Epot_case_2(df_for_epot)
-            logger.info(f"Successfully calculated Epot_case_2 values")
+            potential_energy_values = calculate_potential_energy_from_met_mast(df_for_potential_energy)
+            logger.info(f"Successfully calculated potential energy from met mast data")
         except Exception as e:
-            logger.error(f"Error in Epot_case_2: {str(e)}")
+            logger.error(f"Error calculating potential energy from met mast data: {str(e)}")
 
-        results_final.loc[mask_Epot_case_2, "Epot"] = np.maximum(
-            Epot_case_2_var,
-            results_final.loc[mask_Epot_case_2, "wtc_kWG1TotE_accum"].fillna(0).values,
+        # Use the maximum of calculated potential energy and actual energy
+        final_results.loc[missing_epot_mask, "Epot"] = np.maximum(
+            potential_energy_values,
+            final_results.loc[missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
         )
 
-    results_final["EL"] = results_final["Epot"].fillna(0) - results_final["wtc_kWG1TotE_accum"].fillna(0)
+    # -------- Calculate energy loss --------------------------------------
+    # Calculate total energy loss (potential - actual)
+    final_results["EL"] = final_results["Epot"].fillna(0) - final_results["wtc_kWG1TotE_accum"].fillna(0)
 
-    results_final["EL"] = results_final["EL"].clip(lower=0)
+    # Ensure energy loss is not negative
+    final_results["EL"] = final_results["EL"].clip(lower=0)
 
-    # results_final = results_final.fillna(0)
-
-    results_final["ELX"] = (
-        (results_final["Period 0(s)"] / (results_final["Period 0(s)"] + results_final["Period 1(s)"]))
-        * (results_final["EL"])
+    # Calculate energy loss by error type
+    # Energy loss due to Tarec errors (type 0)
+    final_results["ELX"] = (
+        (final_results["Period 0(s)"] / (final_results["Period 0(s)"] + final_results["Period 1(s)"]))
+        * (final_results["EL"])
     ).fillna(0)
 
-    results_final["ELNX"] = (
-        (results_final["Period 1(s)"] / (results_final["Period 0(s)"] + results_final["Period 1(s)"]))
-        * (results_final["EL"])
+    # Energy loss due to Siemens errors (type 1)
+    final_results["ELNX"] = (
+        (final_results["Period 1(s)"] / (final_results["Period 0(s)"] + final_results["Period 1(s)"]))
+        * (final_results["EL"])
     ).fillna(0)
 
-    results_final["EL_indefini"] = results_final["EL"] - (results_final["ELX"] + results_final["ELNX"])
+    # Energy loss not attributed to specific error types
+    final_results["EL_indefini"] = final_results["EL"] - (final_results["ELX"] + final_results["ELNX"])
 
-    # -------------------------------------------------------------------------
+    # -------- Calculate neighboring values for wind pattern detection --------------------------------------
+    # Add columns for previous and next values in the time series
 
-    results_final["prev_AcWindSp"] = results_final.groupby("TimeStamp", group_keys=True)["wtc_AcWindSp_mean"].shift()
+    # Wind speed from previous and next turbines at the same timestamp
+    final_results["wind_speed_prev_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["wtc_AcWindSp_mean"].shift()
+    final_results["wind_speed_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["wtc_AcWindSp_mean"].shift(-1)
 
-    results_final["next_AcWindSp"] = results_final.groupby("TimeStamp", group_keys=True)["wtc_AcWindSp_mean"].shift(-1)
+    # Minimum power from previous and next turbines at the same timestamp
+    final_results["min_power_prev_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["wtc_ActPower_min"].shift()
+    final_results["min_power_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["wtc_ActPower_min"].shift(-1)
 
-    results_final["prev_ActPower_min"] = results_final.groupby("TimeStamp", group_keys=True)["wtc_ActPower_min"].shift()
+    # Alarm periods from previous and next turbines at the same timestamp
+    final_results["alarm_period_prev_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift()
+    final_results["alarm_period_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift(-1)
 
-    results_final["next_ActPower_min"] = results_final.groupby("TimeStamp", group_keys=True)["wtc_ActPower_min"].shift(
-        -1
+    # Calculate wind speed differences between neighboring turbines at the same timestamp
+    final_results["wind_speed_diff_prev_turbine"] = final_results.wind_speed_prev_turbine - final_results.wtc_AcWindSp_mean
+    final_results["wind_speed_diff_next_turbine"] = final_results.wind_speed_next_turbine - final_results.wtc_AcWindSp_mean
+
+    # -------- Categorize energy loss by cause --------------------------------------
+
+    # Energy loss due to curtailment (power reduction)
+    curtailment_mask = (final_results["EL_indefini"] > 0) & (
+        (final_results["wtc_PowerRed_timeon"] > 0) & (final_results["wtc_ActPower_max"] > 2300)
     )
+    final_results.loc[curtailment_mask, "EL_PowerRed"] = final_results.loc[curtailment_mask, "EL_indefini"]
+    final_results["EL_PowerRed"] = final_results["EL_PowerRed"].fillna(0)
 
-    results_final["prev_Alarme"] = results_final.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift()
+    # Subtract curtailment energy loss from unidentified loss
+    final_results["EL_indefini"] = final_results["EL_indefini"].fillna(0) - final_results["EL_PowerRed"]
 
-    results_final["next_Alarme"] = results_final.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift(-1)
+    # Energy loss due to code 2006 alarms
+    code_2006_mask = (final_results["EL_indefini"] > 0) & (final_results["Duration 2006(s)"] > 0)
+    final_results.loc[code_2006_mask, "EL_2006"] = final_results.loc[code_2006_mask, "EL_indefini"]
+    final_results["EL_2006"] = final_results["EL_2006"].fillna(0)
 
-    results_final["DiffV1"] = results_final.prev_AcWindSp - results_final.wtc_AcWindSp_mean
+    # Subtract code 2006 energy loss from unidentified loss
+    final_results["EL_indefini"] = final_results["EL_indefini"].fillna(0) - final_results["EL_2006"]
 
-    results_final["DiffV2"] = results_final.next_AcWindSp - results_final.wtc_AcWindSp_mean
+    # -------- Detect low wind conditions and post-alarm recovery --------------------------------------
+    def detect_wind_patterns(df):
+        """
+        Detect patterns in wind speed and power to categorize energy loss.
 
-    # -------------------------------------------------------------------------
+        This function:
+        1. Identifies localized low wind conditions by comparing wind speeds between neighboring turbines
+        2. Detects transitions between operational states
+        3. Categorizes energy loss by cause (low wind, post-low wind startup, post-alarm recovery)
 
-    mask_4 = (results_final["EL_indefini"] > 0) & (
-        (results_final["wtc_PowerRed_timeon"] > 0) & (results_final["wtc_ActPower_max"] > 2300)
-    )  # & warning 2006 > 0
+        The function uses wind speed differences between neighboring turbines at the same timestamp
+        to identify turbines experiencing localized wind issues, which helps distinguish between
+        genuine low wind conditions and other causes of energy loss.
 
-    results_final.loc[mask_4, "EL_PowerRed"] = results_final.loc[mask_4, "EL_indefini"]
+        Args:
+            df: DataFrame containing turbine data for a single station
 
-    results_final["EL_PowerRed"] = results_final["EL_PowerRed"].fillna(0)
-
-    results_final["EL_indefini"] = results_final["EL_indefini"].fillna(0) - results_final["EL_PowerRed"]
-
-    # -------------------------------------------------------------------------
-
-    mask_5 = (results_final["EL_indefini"] > 0) & (results_final["Duration 2006(s)"] > 0)  # & warning 2006 > 0
-
-    results_final.loc[mask_5, "EL_2006"] = results_final.loc[mask_5, "EL_indefini"]
-
-    results_final["EL_2006"] = results_final["EL_2006"].fillna(0)
-
-    results_final["EL_indefini"] = results_final["EL_indefini"].fillna(0) - results_final["EL_2006"]
-
-    # -------------------------------------------------------------------------
-
-    def lowind(df):
-        etape1 = (
-            (df.DiffV1 > 1)
-            & (df.DiffV2 > 1)
-            & ((df.prev_AcWindSp >= 5) | (df.next_AcWindSp >= 5) | (df.wtc_AcWindSp_mean >= 5))
+        Returns:
+            DataFrame with categorized energy loss
+        """
+        # Identify significant wind speed differences between neighboring turbines
+        wind_drop_condition = (
+            (df.wind_speed_diff_prev_turbine > 1)                            # Wind speed lower than previous turbine
+            & (df.wind_speed_diff_next_turbine > 1)                          # Wind speed lower than next turbine
+            & ((df.wind_speed_prev_turbine >= 5) | (df.wind_speed_next_turbine >= 5) | (df.wtc_AcWindSp_mean >= 5))  # Sufficient wind somewhere
         )
 
-        mask_1 = ~(
-            etape1
+        # Mask for low wind energy loss
+        # Exclude cases where neighboring turbines are producing power
+        low_wind_mask = ~(
+            wind_drop_condition
             & (
-                ((df.prev_ActPower_min > 0) & (df.next_ActPower_min > 0))
-                | ((df.prev_ActPower_min > 0) & (df.next_Alarme > 0))
-                | ((df.next_ActPower_min > 0) & (df.prev_Alarme > 0))
+                ((df.min_power_prev_turbine > 0) & (df.min_power_next_turbine > 0))    # Both neighboring turbines producing
+                | ((df.min_power_prev_turbine > 0) & (df.alarm_period_next_turbine > 0))  # Previous turbine producing, next has alarm
+                | ((df.min_power_next_turbine > 0) & (df.alarm_period_prev_turbine > 0))  # Next turbine producing, previous has alarm
             )
-        ) & (df["EL_indefini"] > 0)
+        ) & (df["EL_indefini"] > 0)                                          # Has unidentified energy loss
 
-        mask_1 = mask_1.astype('boolean')
-        mask_2 = mask_1.shift().bfill()
+        # Convert to boolean type
+        low_wind_mask = low_wind_mask.astype('boolean')
 
-        df.loc[mask_1, "EL_wind"] = df.loc[mask_1, "EL_indefini"].fillna(0)
+        # Mask for intervals following low wind
+        post_low_wind_mask = low_wind_mask.shift().bfill()
 
-        df.loc[mask_1, "Duration lowind(s)"] = 600
+        # Assign energy loss to low wind category
+        df.loc[low_wind_mask, "EL_wind"] = df.loc[low_wind_mask, "EL_indefini"].fillna(0)
+        df.loc[low_wind_mask, "Duration lowind(s)"] = 600  # 10 minutes in seconds
 
-        df.loc[mask_2 & ~mask_1, "EL_wind_start"] = (df.loc[mask_2 & ~mask_1, "EL_indefini"]).fillna(0)
-
-        df.loc[mask_2 & ~mask_1, "Duration lowind_start(s)"] = 600
-        # ---------------------------------------------------------------------
-
-        mask_3 = (df["RealPeriod"] > 0).shift() & (df["EL_indefini"] > 0) & (df["RealPeriod"] == 0)
-
-        df.loc[~mask_1 & ~mask_2 & mask_3, "EL_alarm_start"] = (
-            df.loc[~mask_1 & ~mask_2 & mask_3, "EL_indefini"]
+        # Assign energy loss to post-low wind startup category
+        df.loc[post_low_wind_mask & ~low_wind_mask, "EL_wind_start"] = (
+            df.loc[post_low_wind_mask & ~low_wind_mask, "EL_indefini"]
         ).fillna(0)
+        df.loc[post_low_wind_mask & ~low_wind_mask, "Duration lowind_start(s)"] = 600
 
-        df.loc[~mask_1 & ~mask_2 & mask_3, "Duration alarm_start(s)"] = 600
+        # Mask for intervals following alarms (post-alarm recovery)
+        # Identifies turbines that have energy loss but no current alarm, while the previous timestamp had an alarm
+        post_alarm_mask = (df["RealPeriod"] > 0).shift() & (df["EL_indefini"] > 0) & (df["RealPeriod"] == 0)
+
+        # Assign energy loss to post-alarm recovery category
+        df.loc[~low_wind_mask & ~post_low_wind_mask & post_alarm_mask, "EL_alarm_start"] = (
+            df.loc[~low_wind_mask & ~post_low_wind_mask & post_alarm_mask, "EL_indefini"]
+        ).fillna(0)
+        df.loc[~low_wind_mask & ~post_low_wind_mask & post_alarm_mask, "Duration alarm_start(s)"] = 600
 
         return df
 
-    results_final = results_final.groupby("StationId", group_keys=False).apply(lowind, include_groups=True)
+    # Apply wind pattern detection to each turbine
+    final_results = final_results.groupby("StationId", group_keys=False).apply(detect_wind_patterns, include_groups=True)
 
-    results_final["EL_indefini_left"] = results_final["EL_indefini"].fillna(0) - (
-        results_final["EL_wind"].fillna(0)
-        + results_final["EL_wind_start"].fillna(0)
-        + results_final["EL_alarm_start"].fillna(0)
+    # Calculate remaining unidentified energy loss
+    final_results["EL_indefini_left"] = final_results["EL_indefini"].fillna(0) - (
+        final_results["EL_wind"].fillna(0)
+        + final_results["EL_wind_start"].fillna(0)
+        + final_results["EL_alarm_start"].fillna(0)
     )
 
-    # -------------------------------------------------------------------------
-    # # bypass -------------
-    # print('bypassing')
-
-    # results_final = pd.read_csv(
-    #     f"./monthly_data/results/{period}-Availability.csv",
-    #     decimal=',', sep=';')
-
-    # results_final['EL_Misassigned'] = 0
-
-    # # #----end bypass
-
-    # ---------Misassigned low wind---------------
-    EL_Misassigned_mask = results_final["UK Text"].str.contains("low wind") & (
-        ((results_final["next_ActPower_min"] > 0) & (results_final["prev_ActPower_min"] > 0))
-        | ((results_final["next_ActPower_min"] > 0) & (results_final["prev_Alarme"] > 0))
-        | ((results_final["prev_ActPower_min"] > 0) & (results_final["next_Alarme"] > 0))
+    # -------- Detect misassigned low wind alarms --------------------------------------
+    # Identify alarms with "low wind" text that have neighboring turbines producing power
+    # This suggests the wind issue is not widespread and might be misclassified
+    misassigned_alarm_mask = final_results["UK Text"].str.contains("low wind") & (
+        ((final_results["min_power_next_turbine"] > 0) & (final_results["min_power_prev_turbine"] > 0))  # Both neighboring turbines producing
+        | ((final_results["min_power_next_turbine"] > 0) & (final_results["alarm_period_prev_turbine"] > 0))  # Next turbine producing, previous has alarm
+        | ((final_results["min_power_prev_turbine"] > 0) & (final_results["alarm_period_next_turbine"] > 0))  # Previous turbine producing, next has alarm
     )
 
-    results_final.loc[EL_Misassigned_mask, "EL_Misassigned"] = results_final.loc[EL_Misassigned_mask, "ELX"]
+    # Assign Tarec energy loss to misassigned category
+    final_results.loc[misassigned_alarm_mask, "EL_Misassigned"] = final_results.loc[misassigned_alarm_mask, "ELX"]
+    final_results["EL_Misassigned"] = final_results["EL_Misassigned"].fillna(0)
 
-    results_final["EL_Misassigned"] = results_final["EL_Misassigned"].fillna(0)
-    # -------------------------------------------------------------------------
+    # -------- Finalize results --------------------------------------
+    # Round numeric columns to 2 decimal places and convert to float32
+    numeric_columns = list(set(final_results.columns) - set(("StationId", "TimeStamp", "UK Text")))
+    final_results[numeric_columns] = final_results[numeric_columns].round(2).astype(np.float32)
 
-    columns_toround = list(set(results_final.columns) - set(("StationId", "TimeStamp", "UK Text")))
-    results_final[columns_toround] = results_final[columns_toround].round(2).astype(np.float32)
-
-    # -------------------------------------------------------------------------
+    # Log the earliest alarm date
     logger.warning(f"First date in alarm = {warning_date}")
 
-    results_final.drop(
-        results_final.loc[results_final["TimeStamp"] == period_start].index,
+    # Remove the first timestamp (period start)
+    final_results.drop(
+        final_results.loc[final_results["TimeStamp"] == period_start].index,
         inplace=True,
     )
 
-    return results_final
+    return final_results
 
 
 if __name__ == "__main__":

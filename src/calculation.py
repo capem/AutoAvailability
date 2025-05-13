@@ -862,8 +862,8 @@ def full_calculation(period):
     processed_alarms = apply_cascade_method(alarm_summary)
     processed_alarms = handle_alarm_code_1005_overlap(processed_alarms)
 
-    # -------------------Process code 2006 alarms (special case)-----------------------------
-    logger.info("Processing code 2006 alarms")
+    # -------------------Process code 2006(DG:Local power limit - OEM) warnings (special case)-----------------------------
+    logger.info("Processing code 2006(DG:Local power limit - OEM) warnings")
 
     # Extract code 2006 alarms
     alarms_code_2006 = alarm_data.loc[(alarm_data["Alarmcode"] == 2006)].copy()
@@ -876,7 +876,7 @@ def full_calculation(period):
         ((TimeOn < @period_start) & (@period_end < TimeOff))"
     )
 
-    # Process code 2006 alarms if any exist
+    # Process code 2006 warnings if any exist
     if not alarms_code_2006.empty:
         # Fill missing TimeOff values
         alarms_code_2006["TimeOff"] = alarms_code_2006["TimeOff"].fillna(period_end)
@@ -901,7 +901,7 @@ def full_calculation(period):
         alarms_code_2006_intervals["Duration 2006(s)"] = alarms_code_2006_intervals["Duration 2006(s)"].dt.total_seconds().fillna(0)
 
     else:
-        logger.info("No code 2006 alarms found")
+        logger.info("No code 2006 warnings found")
         alarms_code_2006_intervals = pd.DataFrame(columns=["TimeStamp", "Duration 2006(s)", "StationId"])
 
     # ----------------------- Convert other alarms to 10-minute intervals --------------------------------------
@@ -957,7 +957,7 @@ def full_calculation(period):
 
     logger.info("Alarm aggregation completed")
 
-    # ----------Merge with code 2006 alarms----------
+    # ----------Merge with code 2006 warnings----------
     aggregated_alarms = pd.merge(
         aggregated_alarms, alarms_code_2006_intervals, on=["TimeStamp", "StationId"], how="left"
     ).reset_index(drop=True)
@@ -1003,7 +1003,7 @@ def full_calculation(period):
         (results["wtc_kWG1TotE_accum"] > 0)                # Producing energy
         & (results["RealPeriod"] == 0)                     # No active alarms
         & (results["wtc_ActPower_min"] > 0)                # Minimum power > 0
-        & (results["Duration 2006(s)"] == 0)               # No code 2006 alarms
+        & (results["Duration 2006(s)"] == 0)               # No code 2006 warnings
         & (                                                # Not curtailed or high power despite curtailment
             (results["wtc_PowerRed_timeon"] == 0)
             | ((results["wtc_PowerRed_timeon"] != 0) & (results["wtc_ActPower_max"] > 2200))
@@ -1150,7 +1150,7 @@ def full_calculation(period):
     # Subtract curtailment energy loss from unidentified loss
     final_results["EL_indefini"] = final_results["EL_indefini"].fillna(0) - final_results["EL_PowerRed"]
 
-    # Energy loss due to code 2006 alarms
+    # Energy loss due to code 2006 warnings
     code_2006_mask = (final_results["EL_indefini"] > 0) & (final_results["Duration 2006(s)"] > 0)
     final_results.loc[code_2006_mask, "EL_2006"] = final_results.loc[code_2006_mask, "EL_indefini"]
     final_results["EL_2006"] = final_results["EL_2006"].fillna(0)

@@ -96,37 +96,37 @@ def apply_cascade_method(alarm_summary_df):
 
     # Define masks for different alarm overlap scenarios
     # Root alarms: Start after any previous alarm ends
-    mask_root_alarms = processed_df.TimeOn.values >= processed_df.TimeOffMax.values
+    is_root_alarm = processed_df.TimeOn.values >= processed_df.TimeOffMax.values
 
     # Child alarms: Start during a previous alarm but end after it
-    mask_child_alarms = (
+    is_child_alarm = (
         (processed_df.TimeOn.values < processed_df.TimeOffMax.values) &
         (processed_df.TimeOff.values > processed_df.TimeOffMax.values)
     )
 
     # Embedded alarms: Completely contained within a previous alarm
-    mask_embedded_alarms = processed_df.TimeOff.values <= processed_df.TimeOffMax.values
+    is_embedded_alarm = processed_df.TimeOff.values <= processed_df.TimeOffMax.values
 
     # Set the new start time based on the overlap scenario
-    processed_df.loc[mask_root_alarms, "NewTimeOn"] = processed_df.loc[mask_root_alarms, "TimeOn"]
-    processed_df.loc[mask_child_alarms, "NewTimeOn"] = processed_df.loc[mask_child_alarms, "TimeOffMax"]
-    processed_df.loc[mask_embedded_alarms, "NewTimeOn"] = processed_df.loc[mask_embedded_alarms, "TimeOff"]
+    processed_df.loc[is_root_alarm, "NewTimeOn"] = processed_df.loc[is_root_alarm, "TimeOn"]
+    processed_df.loc[is_child_alarm, "NewTimeOn"] = processed_df.loc[is_child_alarm, "TimeOffMax"]
+    processed_df.loc[is_embedded_alarm, "NewTimeOn"] = processed_df.loc[is_embedded_alarm, "TimeOff"]
 
     # Reset index for further processing
     processed_df.reset_index(inplace=True)
 
-    # Calculate the real period (duration) of each alarm
+    # Calculate the EffectiveAlarmTime of each alarm
     end_times = processed_df.TimeOff
     start_times = processed_df.NewTimeOn
-    processed_df["RealPeriod"] = abs(end_times - start_times)
+    processed_df["EffectiveAlarmTime"] = abs(end_times - start_times)
 
     # Separate periods by error type
     mask_siemens_errors = processed_df["Error Type"] == 1
     mask_tarec_errors = processed_df["Error Type"] == 0
 
     # Assign periods to their respective error type columns
-    processed_df["Period Siemens(s)"] = processed_df[mask_siemens_errors].RealPeriod
-    processed_df["Period Tarec(s)"] = processed_df[mask_tarec_errors].RealPeriod
+    processed_df["Period Siemens(s)"] = processed_df[mask_siemens_errors].EffectiveAlarmTime
+    processed_df["Period Tarec(s)"] = processed_df[mask_tarec_errors].EffectiveAlarmTime
 
     return processed_df
 
@@ -162,7 +162,7 @@ def convert_to_10min_intervals(alarm_df, alarm_type="1-0"):
 
     # Initialize period columns for normal alarms
     if alarm_type != "2006":
-        alarm_df["RealPeriod"] = pd.Timedelta(0)
+        alarm_df["EffectiveAlarmTime"] = pd.Timedelta(0)
         alarm_df["Period Siemens(s)"] = pd.Timedelta(0)
         alarm_df["Period Tarec(s)"] = pd.Timedelta(0)
 
@@ -178,14 +178,14 @@ def convert_to_10min_intervals(alarm_df, alarm_type="1-0"):
     alarm_df["10minTimeOff"] = end_times_df[["TimeStamp", "TimeOff"]].min(1).values
 
     # Calculate the real period within each 10-minute interval
-    alarm_df["RealPeriod"] = alarm_df["10minTimeOff"] - alarm_df["10minTimeOn"]
+    alarm_df["EffectiveAlarmTime"] = alarm_df["10minTimeOff"] - alarm_df["10minTimeOn"]
 
     # Assign periods to their respective error type columns for normal alarms
     if alarm_type != "2006":
         mask_siemens_errors = alarm_df["Error Type"] == 1
         mask_tarec_errors = alarm_df["Error Type"] == 0
-        alarm_df.loc[mask_siemens_errors, "Period Siemens(s)"] = alarm_df.loc[mask_siemens_errors, "RealPeriod"]
-        alarm_df.loc[mask_tarec_errors, "Period Tarec(s)"] = alarm_df.loc[mask_tarec_errors, "RealPeriod"]
+        alarm_df.loc[mask_siemens_errors, "Period Siemens(s)"] = alarm_df.loc[mask_siemens_errors, "EffectiveAlarmTime"]
+        alarm_df.loc[mask_tarec_errors, "Period Tarec(s)"] = alarm_df.loc[mask_tarec_errors, "EffectiveAlarmTime"]
 
     return alarm_df
 
@@ -220,13 +220,13 @@ def handle_alarm_code_1005_overlap(alarm_df):
             "OldTimeOff",
             "UK Text",
             "Error Type",
-            "RealPeriod",
+            "EffectiveAlarmTime",
         ]
     ].copy()
 
     # Remove zero-duration alarms (except code 1005)
-    zero_duration_mask = (alarm_df.RealPeriod == pd.Timedelta(0)) & (alarm_df.Alarmcode != 1005)
-    alarm_df.drop(alarm_df.loc[zero_duration_mask].index, inplace=True)
+    is_zero_duration = (alarm_df.EffectiveAlarmTime == pd.Timedelta(0)) & (alarm_df.Alarmcode != 1005)
+    alarm_df.drop(alarm_df.loc[is_zero_duration].index, inplace=True)
 
     # Reset index and extract all code 1005 alarms
     alarm_df.reset_index(drop=True, inplace=True)
@@ -886,14 +886,14 @@ def full_calculation(period):
 
         # Aggregate by timestamp
         alarms_code_2006_intervals = alarms_code_2006_intervals.groupby("TimeStamp", group_keys=True).agg(
-            {"RealPeriod": "sum", "StationNr": "first"}
+            {"EffectiveAlarmTime": "sum", "StationNr": "first"}
         )
 
         alarms_code_2006_intervals.reset_index(inplace=True)
 
         # Rename columns for clarity
         alarms_code_2006_intervals.rename(
-            columns={"StationNr": "StationId", "RealPeriod": "Duration 2006(s)"},
+            columns={"StationNr": "StationId", "EffectiveAlarmTime": "Duration 2006(s)"},
             inplace=True,
         )
 
@@ -908,7 +908,7 @@ def full_calculation(period):
     logger.info("Converting alarms to 10-minute intervals")
 
     # Filter out zero-duration alarms
-    non_zero_alarms = processed_alarms.loc[(processed_alarms["RealPeriod"].dt.total_seconds() != 0)].copy()
+    non_zero_alarms = processed_alarms.loc[(processed_alarms["EffectiveAlarmTime"].dt.total_seconds() != 0)].copy()
 
     # Convert to 10-minute intervals
     alarm_intervals = convert_to_10min_intervals(non_zero_alarms)
@@ -920,7 +920,7 @@ def full_calculation(period):
         alarm_intervals.groupby(["StationNr", "TimeStamp"], group_keys=True)
         .agg(
             {
-                "RealPeriod": "sum",
+                "EffectiveAlarmTime": "sum",
                 "Period Tarec(s)": "sum",
                 "Period Siemens(s)": "sum",
                 "UK Text": "|".join,
@@ -947,7 +947,7 @@ def full_calculation(period):
     # Convert timedeltas to seconds and fill NAs with 0
     aggregated_alarms["Period 0(s)"] = aggregated_alarms["Period 0(s)"].dt.total_seconds().fillna(0)
     aggregated_alarms["Period 1(s)"] = aggregated_alarms["Period 1(s)"].dt.total_seconds().fillna(0)
-    aggregated_alarms["RealPeriod"] = aggregated_alarms["RealPeriod"].dt.total_seconds().fillna(0)
+    aggregated_alarms["EffectiveAlarmTime"] = aggregated_alarms["EffectiveAlarmTime"].dt.total_seconds().fillna(0)
 
     # Remove the first timestamp (period start)
     aggregated_alarms.drop(
@@ -1001,7 +1001,7 @@ def full_calculation(period):
     # Create a mask for operational turbines (no alarms, producing energy)
     operational_turbines_mask = (
         (results["wtc_kWG1TotE_accum"] > 0)                # Producing energy
-        & (results["RealPeriod"] == 0)                     # No active alarms
+        & (results["EffectiveAlarmTime"] == 0)                     # No active alarms
         & (results["wtc_ActPower_min"] > 0)                # Minimum power > 0
         & (results["Duration 2006(s)"] == 0)               # No code 2006 warnings
         & (                                                # Not curtailed or high power despite curtailment
@@ -1131,8 +1131,8 @@ def full_calculation(period):
     final_results["min_power_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["wtc_ActPower_min"].shift(-1)
 
     # Alarm periods from previous and next turbines at the same timestamp
-    final_results["alarm_period_prev_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift()
-    final_results["alarm_period_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["RealPeriod"].shift(-1)
+    final_results["alarm_period_prev_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["EffectiveAlarmTime"].shift()
+    final_results["alarm_period_next_turbine"] = final_results.groupby("TimeStamp", group_keys=True)["EffectiveAlarmTime"].shift(-1)
 
     # Calculate wind speed differences between neighboring turbines at the same timestamp
     final_results["wind_speed_diff_prev_turbine"] = final_results.wind_speed_prev_turbine - final_results.wtc_AcWindSp_mean
@@ -1214,7 +1214,7 @@ def full_calculation(period):
 
         # Mask for intervals following alarms (post-alarm recovery)
         # Identifies turbines that have energy loss but no current alarm, while the previous timestamp had an alarm
-        post_alarm_mask = (df["RealPeriod"] > 0).shift() & (df["EL_indefini"] > 0) & (df["RealPeriod"] == 0)
+        post_alarm_mask = (df["EffectiveAlarmTime"] > 0).shift() & (df["EL_indefini"] > 0) & (df["EffectiveAlarmTime"] == 0)
 
         # Assign energy loss to post-alarm recovery category
         df.loc[~low_wind_mask & ~post_low_wind_mask & post_alarm_mask, "EL_alarm_start"] = (

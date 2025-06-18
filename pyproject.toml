@@ -1,0 +1,17 @@
+[project]
+name = "autohebdo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "openpyxl>=3.1.5",
+    "pandas>=2.2.3",
+    "pyodbc>=5.2.0",
+    "python-dotenv>=1.1.0",
+    "pywin32>=310",
+    "rich>=14.0.0",
+    "scipy>=1.15.2",
+    "sqlalchemy>=2.0.40",
+    "tqdm>=4.67.1",
+]

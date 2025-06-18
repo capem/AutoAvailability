@@ -12,6 +12,7 @@ from src import hebdo_calc
 from src import email_send
 from src import logger_config
 from src import results_grouper
+from src import config
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -75,7 +76,7 @@ def send_failure_email():
     # Use your email sending function here
     email_send.send_email(
         df=pd.DataFrame(),  # An empty DataFrame or relevant information
-        receiver_email="s.atmani@tarec.ma",
+        receiver_email=config.EMAIL_CONFIG["failure_recipient"],
         subject=subject,
         body=message,
     )
@@ -169,15 +170,15 @@ if __name__ == "__main__":
     try_forever(
         email_send.send_email,
         df=df_exploi,
-        receiver_email="s.atmani@tarec.ma",
+        receiver_email=config.EMAIL_CONFIG["receiver_default"],
         subject=f"Indisponibilité {title}",
-        # cc_emails=["s.atmani@tarec.ma", "s.atmani@tarec.ma", "s.atmani@tarec.ma"],
+        # cc_emails=[config.EMAIL_CONFIG["receiver_default"], config.EMAIL_CONFIG["receiver_default"], config.EMAIL_CONFIG["receiver_default"]],
     )
 
     try_forever(
         email_send.send_email,
         df=df_Top15,
-        receiver_email="s.atmani@tarec.ma",
+        receiver_email=config.EMAIL_CONFIG["receiver_default"],
         subject=f"Top 15 Total Energy Lost(MWh){title}",
     )
 

@@ -24,7 +24,8 @@ from rich.progress import (
 )
 from sqlalchemy import create_engine
 
-# Import centralized logging
+# Import centralized logging and configuration
+from . import config
 from . import logger_config
 
 # Get a logger for this module
@@ -32,14 +33,8 @@ logger = logger_config.get_logger(__name__)
 
 # --- Configuration Constants (Merged from db_export.py) ---
 
-# Database connection parameters
-DB_CONFIG = {
-    "server": "10.173.224.101",
-    "database": "WpsHistory",
-    "username": "odbc_user",
-    "password": "0dbc@1cust",
-    "driver": "{ODBC Driver 11 for SQL Server}",
-}
+# Database connection parameters from environment variables
+DB_CONFIG = config.DB_CONFIG
 
 # Table mappings between file types and SQL Server tables
 TABLE_MAPPINGS = {
@@ -78,11 +73,11 @@ TABLE_CHECKSUM_COLUMNS = {
 FILE_EXTENSION = "csv"
 
 # Output directories
-BASE_DATA_PATH = "./monthly_data/data"  # Unified data directory
+BASE_DATA_PATH = config.BASE_DATA_PATH  # Unified data directory from environment
 METADATA_EXTENSION = ".meta.json"
 
 # Path to manual adjustments file
-MANUAL_ADJUSTMENTS_FILE = "./config/manual_adjustments.json"
+MANUAL_ADJUSTMENTS_FILE = config.MANUAL_ADJUSTMENTS_FILE
 
 # --- Logging is now handled by logger_config module ---
 
@@ -218,7 +213,7 @@ class DBExporter:
     def _load_error_list(self):
         """Loads and prepares the alarm error list from the Excel file."""
         try:
-            excel_path = "./config/Alarmes List Norme RDS-PP_Tarec.xlsx"
+            excel_path = config.ALARMS_FILE_PATH
             if not os.path.exists(excel_path):
                 logger.error(f"Error list file not found at: {excel_path}")
                 self.alarms_0_1 = pd.Series(dtype=int)

@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
 
-# Import centralized logging
+# Import centralized logging and configuration
+from . import config
 from . import logger_config
 
 # Get a logger for this module
@@ -787,7 +788,7 @@ def full_calculation(period):
 
     # --------------------------Load error list-------------------------
     # Load the error list from Excel file
-    error_list = pd.read_excel(r"./config/Alarmes List Norme RDS-PP_Tarec.xlsx")
+    error_list = pd.read_excel(config.ALARMS_FILE_PATH)
 
     # Convert Number column to integer and ensure no duplicates
     error_list.Number = error_list.Number.astype(int)
@@ -1086,7 +1087,7 @@ def full_calculation(period):
         potential_energy_values = None
         try:
             potential_energy_values = calculate_potential_energy_from_met_mast(df_for_potential_energy)
-            logger.info(f"Successfully calculated potential energy from met mast data")
+            logger.info("Successfully calculated potential energy from met mast data")
         except Exception as e:
             logger.error(f"Error calculating potential energy from met mast data: {str(e)}")
 

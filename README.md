@@ -91,8 +91,51 @@ python adjust_alarms.py remove <alarm_id>
 
 ## Configuration
 
-Database connection parameters are defined in `db_export.py`:
-Email configuration is defined in `email_send.py`.
+### Environment Variables Setup
+
+This application uses environment variables for secure configuration management. All sensitive information like database credentials and email passwords are stored in a `.env` file.
+
+#### Initial Setup
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit the `.env` file with your actual configuration values:
+   ```bash
+   # Database Configuration
+   DB_SERVER=your_database_server_ip
+   DB_DATABASE=your_database_name
+   DB_USERNAME=your_database_username
+   DB_PASSWORD=your_database_password
+
+   # Email Configuration
+   EMAIL_SENDER=your_email@domain.com
+   EMAIL_PASSWORD=your_email_app_password
+   EMAIL_RECEIVER_DEFAULT=recipient@domain.com
+   EMAIL_FAILURE_RECIPIENT=admin@domain.com
+   ```
+
+#### Security Notes
+
+- **Never commit the `.env` file to version control** - it contains sensitive credentials
+- Use app-specific passwords for email authentication (not your regular password)
+- Ensure database user has only the necessary permissions
+- The `.env` file is already added to `.gitignore` to prevent accidental commits
+
+#### Required Environment Variables
+
+- `DB_SERVER`: Database server IP address
+- `DB_DATABASE`: Database name
+- `DB_USERNAME`: Database username
+- `DB_PASSWORD`: Database password
+- `EMAIL_SENDER`: Sender email address
+- `EMAIL_PASSWORD`: Email app password
+- `EMAIL_RECEIVER_DEFAULT`: Default recipient email
+- `EMAIL_FAILURE_RECIPIENT`: Email for failure notifications
+
+All configuration is now centralized in the `src/config.py` module, which loads values from environment variables with proper validation.
 
 ## Dependencies
 
@@ -102,3 +145,4 @@ Email configuration is defined in `email_send.py`.
 - scipy: Scientific computing
 - rich: Terminal formatting and logging
 - smtplib: Email functionality
+- python-dotenv: Environment variable management

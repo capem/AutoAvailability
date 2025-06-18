@@ -2,7 +2,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-# Import centralized logging
+# Import centralized logging and configuration
+from . import config
 from . import logger_config
 
 # Get a logger for this module
@@ -48,10 +49,16 @@ def send_email(
     df,
     receiver_email,
     subject,
-    sender_email="s.atmani@tarec.ma",
-    email_password="nimd dmbk ngbt yqza",
+    sender_email=None,
+    email_password=None,
     cc_emails=None,
 ):
+    # Use environment variables if not provided
+    if sender_email is None:
+        sender_email = config.EMAIL_CONFIG["sender_email"]
+    if email_password is None:
+        email_password = config.EMAIL_CONFIG["password"]
+
     # Apply the style to your dataframe and convert to HTML
     html = style_dataframe(df)
 
@@ -75,7 +82,7 @@ def send_email(
     # SMTP server configuration
     try:
         logger.info(f"Sending email to {receiver_email} with subject: {subject}")
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server = smtplib.SMTP(config.EMAIL_CONFIG["smtp_host"], config.EMAIL_CONFIG["smtp_port"])
         server.starttls()
         server.login(sender_email, email_password)
         server.send_message(message, from_addr=sender_email, to_addrs=receiver_email)

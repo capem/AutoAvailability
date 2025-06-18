@@ -9,3 +9,6 @@ build/
 # include only .gitkeep files
 !/monthly_data/**/*.gitkeep
 __pycache__/
+
+# Environment variables file (contains sensitive information)
+.env

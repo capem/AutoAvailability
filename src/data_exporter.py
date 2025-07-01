@@ -207,8 +207,18 @@ class DBExporter:
     def __init__(self, connection_pool):
         """Initialize the exporter"""
         self.connection_pool = connection_pool
-        self._load_error_list()
-        self.manual_adjustments = self._load_manual_adjustments()
+        # Lazy loading: only load alarm codes and manual adjustments when needed
+        self.alarms_0_1 = None
+        self.manual_adjustments = None
+        self._alarm_data_loaded = False
+
+    def _ensure_alarm_data_loaded(self):
+        """Ensure alarm codes and manual adjustments are loaded (lazy loading)"""
+        if not self._alarm_data_loaded:
+            logger.info("Loading alarm codes and manual adjustments...")
+            self._load_error_list()
+            self.manual_adjustments = self._load_manual_adjustments()
+            self._alarm_data_loaded = True
 
     def _load_error_list(self):
         """Loads and prepares the alarm error list from the Excel file."""
@@ -316,12 +326,9 @@ class DBExporter:
         try:
             # Prepare the query based on table type
             if table_name == "tblAlarmLog":
-                if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
-                    logger.warning(
-                        "alarms_0_1 not loaded or empty for tblAlarmLog check. Attempting load."
-                    )
-                    self._load_error_list()
-                    if self.alarms_0_1.empty:
+                # Ensure alarm data is loaded for tblAlarmLog operations
+                self._ensure_alarm_data_loaded()
+                if self.alarms_0_1 is None or self.alarms_0_1.empty:
                         logger.error(
                             "Failed to load alarms_0_1 for tblAlarmLog check."
                         )
@@ -420,13 +427,13 @@ class DBExporter:
             if hasattr(self.connection_pool, 'engine') and self.connection_pool.engine is not None:
                 # Use SQLAlchemy engine directly with pandas
                 if table_name == "tblAlarmLog":
-                    if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
-                        self._load_error_list()
-                        if self.alarms_0_1.empty:
-                            logger.error(
-                                "Failed to load alarms_0_1 for tblAlarmLog fetch."
-                            )
-                            return pd.DataFrame()
+                    # Ensure alarm data is loaded for tblAlarmLog operations
+                    self._ensure_alarm_data_loaded()
+                    if self.alarms_0_1 is None or self.alarms_0_1.empty:
+                        logger.error(
+                            "Failed to load alarms_0_1 for tblAlarmLog fetch."
+                        )
+                        return pd.DataFrame()
                     query = self.construct_query(
                         period_start, period_end, self.alarms_0_1
                     )
@@ -447,13 +454,13 @@ class DBExporter:
                 # Fall back to using the connection pool if engine is not available
                 with self.connection_pool.get_connection() as conn:
                     if table_name == "tblAlarmLog":
-                        if not hasattr(self, "alarms_0_1") or self.alarms_0_1.empty:
-                            self._load_error_list()
-                            if self.alarms_0_1.empty:
-                                logger.error(
-                                    "Failed to load alarms_0_1 for tblAlarmLog fetch."
-                                )
-                                return pd.DataFrame()
+                        # Ensure alarm data is loaded for tblAlarmLog operations
+                        self._ensure_alarm_data_loaded()
+                        if self.alarms_0_1 is None or self.alarms_0_1.empty:
+                            logger.error(
+                                "Failed to load alarms_0_1 for tblAlarmLog fetch."
+                            )
+                            return pd.DataFrame()
                         query = self.construct_query(
                             period_start, period_end, self.alarms_0_1
                         )

@@ -1,9 +1,9 @@
 """
 Alarm Adjustment Tool
 
-This tool provides a command-line interface for manually adjusting alarm timeoff values.
+This tool provides a command-line interface for manually adjusting alarm time_on and time_off values.
 It allows users to add, update, list, and remove manual adjustments for alarms that
-have no timeoff values in the database.
+have incorrect or missing time values in the database.
 """
 
 import os
@@ -137,21 +137,44 @@ def update_adjustment(args):
         if adj["id"] == args.id:
             found = True
 
-            # Validate time format if provided
-            if args.time_off:
-                try:
-                    time_on = datetime.strptime(adj["time_on"], "%Y-%m-%d %H:%M:%S")
-                    time_off = datetime.strptime(args.time_off, "%Y-%m-%d %H:%M:%S")
+            # Get current time_on and time_off for validation
+            current_time_on = adj.get("time_on")
+            current_time_off = adj.get("time_off")
 
-                    # Ensure time_off is after time_on
-                    if time_off <= time_on:
-                        logger.error("Time Off must be after Time On")
-                        return False
+            # Update time_on if provided
+            if args.time_on:
+                try:
+                    new_time_on = datetime.strptime(args.time_on, "%Y-%m-%d %H:%M:%S")
+
+                    # If time_off exists, ensure time_on is before time_off
+                    if current_time_off:
+                        time_off = datetime.strptime(current_time_off, "%Y-%m-%d %H:%M:%S")
+                        if new_time_on >= time_off:
+                            logger.error("Time On must be before Time Off")
+                            return False
+
+                    adjustments["adjustments"][i]["time_on"] = args.time_on
+                    current_time_on = args.time_on
                 except ValueError:
-                    logger.error("Invalid time format. Use YYYY-MM-DD HH:MM:SS")
+                    logger.error("Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
                     return False
 
-                adjustments["adjustments"][i]["time_off"] = args.time_off
+            # Update time_off if provided
+            if args.time_off:
+                try:
+                    new_time_off = datetime.strptime(args.time_off, "%Y-%m-%d %H:%M:%S")
+
+                    # If time_on exists, ensure time_off is after time_on
+                    if current_time_on:
+                        time_on = datetime.strptime(current_time_on, "%Y-%m-%d %H:%M:%S")
+                        if new_time_off <= time_on:
+                            logger.error("Time Off must be after Time On")
+                            return False
+
+                    adjustments["adjustments"][i]["time_off"] = args.time_off
+                except ValueError:
+                    logger.error("Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
+                    return False
 
             # Update notes if provided
             if args.notes is not None:  # Allow empty string to clear notes
@@ -191,7 +214,7 @@ def remove_adjustment(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Manually adjust alarm timeoff values")
+    parser = argparse.ArgumentParser(description="Manually adjust alarm time_on and time_off values")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
     # List command
@@ -211,6 +234,7 @@ def main():
         "update", help="Update an existing manual adjustment"
     )
     update_parser.add_argument("id", type=int, help="Alarm ID to update")
+    update_parser.add_argument("--time_on", help="New Time On (YYYY-MM-DD HH:MM:SS)")
     update_parser.add_argument("--time_off", help="New Time Off (YYYY-MM-DD HH:MM:SS)")
     update_parser.add_argument("--notes", help="New notes about this adjustment")
 

@@ -504,15 +504,39 @@ class DBExporter:
         for adjustment in self.manual_adjustments["adjustments"]:
             mask = df_adjusted["ID"] == adjustment["id"]
             if mask.any():
+                adjustment_count = 0
                 try:
-                    time_off = pd.to_datetime(adjustment["time_off"], errors="coerce")
-                    if pd.notna(time_off):  # Check if conversion was successful
-                        df_adjusted.loc[mask, "TimeOff"] = time_off
+                    # Apply time_off adjustment if present
+                    if "time_off" in adjustment and adjustment["time_off"]:
+                        time_off = pd.to_datetime(adjustment["time_off"], errors="coerce")
+                        if pd.notna(time_off):  # Check if conversion was successful
+                            df_adjusted.loc[mask, "TimeOff"] = time_off
+                            adjustment_count += 1
+                        else:
+                            logger.warning(
+                                f"Invalid time_off format in adjustment for ID {adjustment['id']}: {adjustment['time_off']}"
+                            )
+
+                    # Apply time_on adjustment if present
+                    if "time_on" in adjustment and adjustment["time_on"]:
+                        time_on = pd.to_datetime(adjustment["time_on"], errors="coerce")
+                        if pd.notna(time_on):  # Check if conversion was successful
+                            df_adjusted.loc[mask, "TimeOn"] = time_on
+                            adjustment_count += 1
+                        else:
+                            logger.warning(
+                                f"Invalid time_on format in adjustment for ID {adjustment['id']}: {adjustment['time_on']}"
+                            )
+
+                    if adjustment_count > 0:
                         adjustments_applied += 1
-                    else:
-                        logger.warning(
-                            f"Invalid time_off format in adjustment for ID {adjustment['id']}: {adjustment['time_off']}"
+                        logger.debug(
+                            f"Applied adjustment for alarm ID {adjustment['id']}: "
+                            f"{'time_on' if 'time_on' in adjustment and adjustment['time_on'] else ''}"
+                            f"{' and ' if 'time_on' in adjustment and adjustment['time_on'] and 'time_off' in adjustment and adjustment['time_off'] else ''}"
+                            f"{'time_off' if 'time_off' in adjustment and adjustment['time_off'] else ''}"
                         )
+
                 except Exception as e:
                     logger.error(
                         f"Failed to apply adjustment for alarm ID {adjustment['id']}: {e}"

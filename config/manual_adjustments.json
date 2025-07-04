@@ -1,380 +1,660 @@
 {
-    "adjustments": [
-      {
-        "id": 11884079,
-        "alarm_code": 1001,
-        "station_nr": 2307518,
-        "time_on": "2025-02-13 08:22:49",
-        "time_off": "2025-02-13 15:50:00",
-        "notes": "Manually adjusted due to missing timeoff"
-      },
-      {
-        "id": 11884546,
-        "alarm_code": 63025,
-        "station_nr": 2307518,
-        "time_on": "2025-02-13 10:23:41",
-        "time_off": "2025-02-13 15:50:00",
-        "notes": "Manually adjusted due to missing timeoff"
-      },
-      {
-        "id": 11884551,
-        "alarm_code": 3203,
-        "station_nr": 2307518,
-        "time_on": "2025-02-13 10:24:18",
-        "time_off": "2025-02-13 15:50:00",
-        "notes": "Manually adjusted due to missing timeoff"
-      },
-      {
-        "id": 11884552,
-        "alarm_code": 3204,
-        "station_nr": 2307518,
-        "time_on": "2025-02-13 10:24:18",
-        "time_off": "2025-02-13 15:50:00",
-        "notes": "Manually adjusted due to missing timeoff"
-      },
-      {
-        "id": 11884553,
-        "alarm_code": 3205,
-        "station_nr": 2307518,
-        "time_on": "2025-02-13 10:24:18",
-        "time_off": "2025-02-13 15:50:00",
-        "notes": "Manually adjusted due to missing timeoff"
-      },
-      {
-        "id": 10350624,
-        "alarm_code": 5104,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:11:16",
-        "time_off": "2024-05-16 20:11:17"
-      },
-      {
-        "id": 10350662,
-        "alarm_code": 5201,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:03",
-        "time_off": "2024-05-16 20:30:04"
-      },
-      {
-        "id": 10350663,
-        "alarm_code": 5110,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:03",
-        "time_off": "2024-05-16 20:30:04"
-      },
-      {
-        "id": 10350665,
-        "alarm_code": 5113,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:04",
-        "time_off": "2024-05-16 20:30:05"
-      },
-      {
-        "id": 10350667,
-        "alarm_code": 1018,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:05",
-        "time_off": "2024-05-16 20:30:06"
-      },
-      {
-        "id": 10350666,
-        "alarm_code": 5111,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:05",
-        "time_off": "2024-05-16 20:30:06"
-      },
-      {
-        "id": 10350668,
-        "alarm_code": 5112,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 20:30:05",
-        "time_off": "2024-05-16 20:30:06"
-      },
-      {
-        "id": 10352517,
-        "alarm_code": 63003,
-        "station_nr": 2307425,
-        "time_on": "2024-05-16 21:11:23",
-        "time_off": "2024-05-16 21:11:24"
-      },
-      {
-        "id": 11863692,
-        "alarm_code": 3146,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 06:40:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863696,
-        "alarm_code": 3407,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 06:40:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863698,
-        "alarm_code": 63211,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 06:40:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863702,
-        "alarm_code": 63210,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 06:40:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863740,
-        "alarm_code": 64132,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 07:36:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863742,
-        "alarm_code": 3149,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 07:36:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863744,
-        "alarm_code": 3144,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 07:36:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863746,
-        "alarm_code": 3145,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 07:36:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11863750,
-        "alarm_code": 63209,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 07:36:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872295,
-        "alarm_code": 5104,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872297,
-        "alarm_code": 5201,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872299,
-        "alarm_code": 5110,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872301,
-        "alarm_code": 1018,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872303,
-        "alarm_code": 5111,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872305,
-        "alarm_code": 5112,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872307,
-        "alarm_code": 5113,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872310,
-        "alarm_code": 63202,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872312,
-        "alarm_code": 63207,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872314,
-        "alarm_code": 63216,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872316,
-        "alarm_code": 63217,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872318,
-        "alarm_code": 63203,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872320,
-        "alarm_code": 63208,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872322,
-        "alarm_code": 63204,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872328,
-        "alarm_code": 13207,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:30:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872330,
-        "alarm_code": 13110,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872332,
-        "alarm_code": 13135,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872337,
-        "alarm_code": 13902,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872340,
-        "alarm_code": 13329,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872350,
-        "alarm_code": 1004,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872352,
-        "alarm_code": 13311,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872354,
-        "alarm_code": 64054,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11872366,
-        "alarm_code": 13325,
-        "station_nr": 2307461,
-        "time_on": "2025-02-10 21:31:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11874670,
-        "alarm_code": 1001,
-        "station_nr": 2307461,
-        "time_on": "2025-02-11 12:13:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11876297,
-        "alarm_code": 63003,
-        "station_nr": 2307461,
-        "time_on": "2025-02-11 13:17:00",
-        "time_off": "2025-02-20 16:10:00"
-      },
-      {
-        "id": 11884452,
-        "alarm_code": 1001,
-        "station_nr": 64,
-        "time_on": "2025-02-13 09:38:00",
-        "time_off": "2025-03-24 05:50:00"
-      },
-      {
-        "id": 11884466,
-        "alarm_code": 63210,
-        "station_nr": 64,
-        "time_on": "2025-02-13 09:39:00",
-        "time_off": "2025-03-24 05:50:00"
-      },
-      {
-        "id": 11884638,
-        "alarm_code": 63211,
-        "station_nr": 64,
-        "time_on": "2025-02-13 11:28:00",
-        "time_off": "2025-03-24 05:50:00"
-      },
-      {
-        "id": 11884640,
-        "alarm_code": 63209,
-        "station_nr": 64,
-        "time_on": "2025-02-13 11:28:00",
-        "time_off": "2025-03-24 05:50:00"
-      },
-      {
-        "id": 11884641,
-        "alarm_code": 63204,
-        "station_nr": 64,
-        "time_on": "2025-02-13 11:29:00",
-        "time_off": "2025-03-24 05:50:00"
-      },
-      {
-        "id": 11884945,
-        "alarm_code": 64132,
-        "station_nr": 64,
-        "time_on": "2025-02-13 12:12:00",
-        "time_off": "2025-03-24 05:50:00"
-      }
-    ]
-  }
+  "adjustments": [
+    {
+      "id": 11884079,
+      "alarm_code": 1001,
+      "station_nr": 2307518,
+      "time_on": "2025-02-13 08:22:49",
+      "time_off": "2025-02-13 15:50:00",
+      "notes": "Manually adjusted due to missing timeoff"
+    },
+    {
+      "id": 11884546,
+      "alarm_code": 63025,
+      "station_nr": 2307518,
+      "time_on": "2025-02-13 10:23:41",
+      "time_off": "2025-02-13 15:50:00",
+      "notes": "Manually adjusted due to missing timeoff"
+    },
+    {
+      "id": 11884551,
+      "alarm_code": 3203,
+      "station_nr": 2307518,
+      "time_on": "2025-02-13 10:24:18",
+      "time_off": "2025-02-13 15:50:00",
+      "notes": "Manually adjusted due to missing timeoff"
+    },
+    {
+      "id": 11884552,
+      "alarm_code": 3204,
+      "station_nr": 2307518,
+      "time_on": "2025-02-13 10:24:18",
+      "time_off": "2025-02-13 15:50:00",
+      "notes": "Manually adjusted due to missing timeoff"
+    },
+    {
+      "id": 11884553,
+      "alarm_code": 3205,
+      "station_nr": 2307518,
+      "time_on": "2025-02-13 10:24:18",
+      "time_off": "2025-02-13 15:50:00",
+      "notes": "Manually adjusted due to missing timeoff"
+    },
+    {
+      "id": 10350624,
+      "alarm_code": 5104,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:11:16",
+      "time_off": "2024-05-16 20:11:17"
+    },
+    {
+      "id": 10350662,
+      "alarm_code": 5201,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:03",
+      "time_off": "2024-05-16 20:30:04"
+    },
+    {
+      "id": 10350663,
+      "alarm_code": 5110,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:03",
+      "time_off": "2024-05-16 20:30:04"
+    },
+    {
+      "id": 10350665,
+      "alarm_code": 5113,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:04",
+      "time_off": "2024-05-16 20:30:05"
+    },
+    {
+      "id": 10350667,
+      "alarm_code": 1018,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:05",
+      "time_off": "2024-05-16 20:30:06"
+    },
+    {
+      "id": 10350666,
+      "alarm_code": 5111,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:05",
+      "time_off": "2024-05-16 20:30:06"
+    },
+    {
+      "id": 10350668,
+      "alarm_code": 5112,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 20:30:05",
+      "time_off": "2024-05-16 20:30:06"
+    },
+    {
+      "id": 10352517,
+      "alarm_code": 63003,
+      "station_nr": 2307425,
+      "time_on": "2024-05-16 21:11:23",
+      "time_off": "2024-05-16 21:11:24"
+    },
+    {
+      "id": 11863692,
+      "alarm_code": 3146,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 06:40:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863696,
+      "alarm_code": 3407,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 06:40:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863698,
+      "alarm_code": 63211,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 06:40:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863702,
+      "alarm_code": 63210,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 06:40:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863740,
+      "alarm_code": 64132,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 07:36:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863742,
+      "alarm_code": 3149,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 07:36:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863744,
+      "alarm_code": 3144,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 07:36:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863746,
+      "alarm_code": 3145,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 07:36:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11863750,
+      "alarm_code": 63209,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 07:36:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872295,
+      "alarm_code": 5104,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872297,
+      "alarm_code": 5201,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872299,
+      "alarm_code": 5110,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872301,
+      "alarm_code": 1018,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872303,
+      "alarm_code": 5111,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872305,
+      "alarm_code": 5112,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872307,
+      "alarm_code": 5113,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872310,
+      "alarm_code": 63202,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872312,
+      "alarm_code": 63207,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872314,
+      "alarm_code": 63216,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872316,
+      "alarm_code": 63217,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872318,
+      "alarm_code": 63203,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872320,
+      "alarm_code": 63208,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872322,
+      "alarm_code": 63204,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872328,
+      "alarm_code": 13207,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:30:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872330,
+      "alarm_code": 13110,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872332,
+      "alarm_code": 13135,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872337,
+      "alarm_code": 13902,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872340,
+      "alarm_code": 13329,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872350,
+      "alarm_code": 1004,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872352,
+      "alarm_code": 13311,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872354,
+      "alarm_code": 64054,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11872366,
+      "alarm_code": 13325,
+      "station_nr": 2307461,
+      "time_on": "2025-02-10 21:31:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11874670,
+      "alarm_code": 1001,
+      "station_nr": 2307461,
+      "time_on": "2025-02-11 12:13:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11876297,
+      "alarm_code": 63003,
+      "station_nr": 2307461,
+      "time_on": "2025-02-11 13:17:00",
+      "time_off": "2025-02-20 16:10:00"
+    },
+    {
+      "id": 11884452,
+      "alarm_code": 1001,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 09:38:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11884466,
+      "alarm_code": 63210,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 09:39:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11884638,
+      "alarm_code": 63211,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 11:28:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11884640,
+      "alarm_code": 63209,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 11:28:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11884641,
+      "alarm_code": 63204,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 11:29:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11884945,
+      "alarm_code": 64132,
+      "station_nr": 2307468,
+      "time_on": "2025-02-13 12:12:00",
+      "time_off": "2025-03-24 05:50:00"
+    },
+    {
+      "id": 11878994,
+      "alarm_code": 1014,
+      "station_nr": 2307450,
+      "time_on": "2025-02-11 15:23:05",
+      "time_off": "2025-02-11 15:59:02",
+      "notes": "wrong time off"
+    },
+    {
+      "id": 11877784,
+      "alarm_code": 10103,
+      "station_nr": 2307450,
+      "time_on": "2025-02-11 15:23:05",
+      "time_off": "2025-02-11 16:10:00",
+      "notes": "wrong time off"
+    },
+    {
+      "id": 12472648,
+      "alarm_code": 63001,
+      "station_nr": 2307450,
+      "time_on": "2025-02-11 15:14:37",
+      "time_off": "2025-02-11 16:10:00",
+      "notes": "wrong time off"
+    },
+    {
+      "id": 12449325,
+      "alarm_code": 916,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 13:30:07",
+      "time_off": "2025-06-25 13:32:57",
+      "notes": "wrong time on"
+    },
+    {
+      "id": 12449326,
+      "alarm_code": 1014,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 13:30:33",
+      "time_off": "2025-06-25 13:30:33",
+      "notes": "wrong time on"
+    },
+    {
+      "id": 12449374,
+      "alarm_code": 923,
+      "station_nr": 2307437,
+      "time_on": "2025-06-18 04:04:45",
+      "time_off": "2025-06-18 10:32:26",
+      "notes": "wrong time on"
+    },
+    {
+      "id": 12462207,
+      "alarm_code": 62009,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 12:52:15",
+      "time_off": "2025-06-25 12:54:52",
+      "notes": "wrong time on"
+    },
+    {
+      "id": 12462215,
+      "alarm_code": 7101,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462216,
+      "alarm_code": 13900,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462219,
+      "alarm_code": 13902,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462227,
+      "alarm_code": 1014,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462230,
+      "alarm_code": 911,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462232,
+      "alarm_code": 63230,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462233,
+      "alarm_code": 1800,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462234,
+      "alarm_code": 923,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12462236,
+      "alarm_code": 1025,
+      "station_nr": 2307437,
+      "time_on": "2025-06-25 11:34:30",
+      "time_off": "2025-06-25 11:34:30",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450974,
+      "alarm_code": 63210,
+      "station_nr": 2307471,
+      "time_on": "2025-06-18 13:09:02",
+      "time_off": "2025-06-18 13:09:02",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450975,
+      "alarm_code": 63211,
+      "station_nr": 2307471,
+      "time_on": "2025-06-18 13:09:00",
+      "time_off": "2025-06-18 13:09:00",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450976,
+      "alarm_code": 63204,
+      "station_nr": 2307471,
+      "time_on": "2025-06-18 13:08:31",
+      "time_off": "2025-06-18 13:08:31",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450977,
+      "alarm_code": 63209,
+      "station_nr": 2307471,
+      "time_on": "2025-06-18 13:08:24",
+      "time_off": "2025-06-18 13:08:24",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450981,
+      "alarm_code": 2701,
+      "station_nr": 2307471,
+      "time_on": "2025-06-18 13:06:22",
+      "time_off": "2025-06-18 13:06:22",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449931,
+      "alarm_code": 1001,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 17:53:40",
+      "time_off": "2025-06-18 17:53:40",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449966,
+      "alarm_code": 13900,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 14:17:45",
+      "time_off": "2025-06-18 14:17:45",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449975,
+      "alarm_code": 13902,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 14:17:32",
+      "time_off": "2025-06-18 14:17:32",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449982,
+      "alarm_code": 63038,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:53:42",
+      "time_off": "2025-06-18 13:53:42",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449990,
+      "alarm_code": 63210,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:09:02",
+      "time_off": "2025-06-18 13:09:02",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449991,
+      "alarm_code": 63211,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:09:00",
+      "time_off": "2025-06-18 13:09:00",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449992,
+      "alarm_code": 63204,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:08:31",
+      "time_off": "2025-06-18 13:08:31",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449993,
+      "alarm_code": 63209,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:08:24",
+      "time_off": "2025-06-18 13:08:24",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12449997,
+      "alarm_code": 2701,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:06:22",
+      "time_off": "2025-06-18 13:06:22",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12450207,
+      "alarm_code": 64132,
+      "station_nr": 2307473,
+      "time_on": "2025-06-18 13:07:17",
+      "time_off": "2025-06-18 13:07:17",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12452690,
+      "alarm_code": 64132,
+      "station_nr": 2307473,
+      "time_on": "2025-06-29 20:44:41",
+      "time_off": "2025-06-29 20:44:41",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12453033,
+      "alarm_code": 13294,
+      "station_nr": 2307473,
+      "time_on": "2025-06-20 16:02:37",
+      "time_off": "2025-06-20 16:02:37",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12453298,
+      "alarm_code": 3221,
+      "station_nr": 2307473,
+      "time_on": "2025-06-20 09:17:29",
+      "time_off": "2025-06-20 09:17:29",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12453345,
+      "alarm_code": 3411,
+      "station_nr": 2307473,
+      "time_on": "2025-06-20 09:17:24",
+      "time_off": "2025-06-20 09:17:24",
+      "notes": "wrong time on; missing from myavailability"
+    }
+  ]
+}

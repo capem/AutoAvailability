@@ -266,6 +266,11 @@ class DBExporter:
             logger.error(f"Failed to load or process manual adjustments: {e}")
             return {"adjustments": []}
 
+    def _ensure_manual_adjustments_loaded(self):
+        """Ensures manual adjustments are loaded, loading them if necessary."""
+        if not hasattr(self, 'manual_adjustments') or self.manual_adjustments is None:
+            self.manual_adjustments = self._load_manual_adjustments()
+
     def _get_metadata_path(self, csv_path):
         """Constructs the metadata file path from the CSV path."""
         return csv_path + METADATA_EXTENSION
@@ -777,11 +782,31 @@ class DBExporter:
             if update_mode == "process-existing":
                 if os.path.exists(output_path):
                     logger.info(f"[process-existing] Processing existing file: {output_path}")
-                    # Placeholder for any processing logic on the existing file
-                    # For now, just read and log row count
                     try:
                         df = pd.read_csv(output_path)
                         logger.info(f"[process-existing] {len(df)} rows found in {output_path}")
+
+                        # Apply manual adjustments if this is the alarm table
+                        if table_name == "tblAlarmLog" and not df.empty:
+                            # Ensure manual adjustments are loaded
+                            self._ensure_manual_adjustments_loaded()
+
+                            # Convert time columns to datetime for proper adjustment application
+                            for col in ["TimeOn", "TimeOff"]:
+                                if col in df.columns:
+                                    df[col] = pd.to_datetime(df[col], errors="coerce")
+
+                            # Apply manual adjustments
+                            df_adjusted = self._apply_manual_adjustments(df)
+
+                            # Save the updated file with adjustments
+                            if not df_adjusted.equals(df):
+                                logger.info(f"[process-existing] Saving updated file with manual adjustments: {output_path}")
+                                df_adjusted.to_csv(output_path, index=False)
+                                logger.debug("[process-existing] Manual adjustments applied, but metadata unchanged (represents DB state)")
+                            else:
+                                logger.info("[process-existing] No new adjustments to apply")
+
                         return True
                     except Exception as e:
                         logger.error(f"[process-existing] Failed to read {output_path}: {e}")

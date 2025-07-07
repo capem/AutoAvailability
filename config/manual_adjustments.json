@@ -401,6 +401,22 @@
       "notes": "wrong time off"
     },
     {
+      "id": 11877785,
+      "alarm_code": 63001,
+      "station_nr": 2307450,
+      "time_on": "2025-02-11 15:23:05",
+      "time_off": "2025-02-11 15:27:32",
+      "notes": "wrong time on"
+    },
+    {
+      "id": 11878994,
+      "alarm_code": 63001,
+      "station_nr": 2307450,
+      "time_on": "2025-02-11 15:27:32",
+      "time_off": "2025-02-11 15:59:02",
+      "notes": "wrong time on"
+    },
+    {
       "id": 12449325,
       "alarm_code": 916,
       "station_nr": 2307437,
@@ -654,6 +670,14 @@
       "station_nr": 2307473,
       "time_on": "2025-06-20 09:17:24",
       "time_off": "2025-06-20 09:17:24",
+      "notes": "wrong time on; missing from myavailability"
+    },
+    {
+      "id": 12452693,
+      "alarm_code": 9304,
+      "station_nr": 2307473,
+      "time_on": "2014-07-11 00:29:09",
+      "time_off": "2014-07-11 00:29:09",
       "notes": "wrong time on; missing from myavailability"
     }
   ]

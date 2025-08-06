@@ -950,11 +950,6 @@ def full_calculation(period):
     aggregated_alarms["Period 1(s)"] = aggregated_alarms["Period 1(s)"].dt.total_seconds().fillna(0)
     aggregated_alarms["EffectiveAlarmTime"] = aggregated_alarms["EffectiveAlarmTime"].dt.total_seconds().fillna(0)
 
-    # Remove the first timestamp (period start)
-    aggregated_alarms.drop(
-        aggregated_alarms.loc[aggregated_alarms["TimeStamp"] == period_start].index,
-        inplace=True,
-    )
 
     logger.info("Alarm aggregation completed")
 
@@ -1256,11 +1251,6 @@ def full_calculation(period):
     # Log the earliest alarm date
     logger.warning(f"First date in alarm = {warning_date}")
 
-    # Remove the first timestamp (period start)
-    final_results.drop(
-        final_results.loc[final_results["TimeStamp"] == period_start].index,
-        inplace=True,
-    )
 
     return final_results
 

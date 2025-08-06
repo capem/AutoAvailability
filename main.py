@@ -85,104 +85,129 @@ def send_failure_email():
 if __name__ == "__main__":
     # Initialize logging
     logger_config.configure_logging()
-    # Define and parse the command-line argument
-    parser = argparse.ArgumentParser(
-        description="Process weekly data, exporting and calculating."
+
+    # Parser with rich help and examples
+    epilog = (
+        "Examples:\n"
+        "  Single date (backward compatible):\n"
+        "    uv run ./main.py -y 2025-01-31 --update-mode process-existing\n"
+        "  Multiple dates via repeated -y:\n"
+        "    uv run ./main.py -y 2025-01-31 -y 2025-02-28 --update-mode process-existing\n"
+        "  Multiple dates via comma-separated list:\n"
+        "    uv run ./main.py -y 2025-01-31,2025-02-28 --update-mode process-existing\n"
+        "  Windows CMD variant:\n"
+        "    uv run .\\main.py -y 2025-01-31 -y 2025-02-28 --update-mode process-existing\n"
     )
+    parser = argparse.ArgumentParser(
+        description="Process weekly data, exporting and calculating.",
+        epilog=epilog,
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+
+    # Accept multiple dates via repeatable -y/--date and comma-separated values
     parser.add_argument(
         "-y",
         "--yesterday",
-        type=str,
-        help='Optional date in YYYY-MM-DD format that overwrites the "yesterday" variable.',
-        default=None,
+        dest="yesterdays",
+        action="append",
+        help=(
+            "Date(s) in YYYY-MM-DD. May be specified multiple times or as a comma-separated list. "
+            "If omitted, defaults to yesterday."
+        ),
     )
     parser.add_argument(
         "--update-mode",
         choices=["check", "append", "force-overwrite", "process-existing"],
-        default="append",  # Defaulting to 'append' as decided
-        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only).",
+        default="append",
+        help="Handling of existing data exports: check | append | force-overwrite | process-existing",
     )
     args = parser.parse_args()
 
-    # Check if a date was provided and is valid
-    if args.yesterday:
-        try:
-            # Parse the provided date string into a datetime object
-            yesterday = dt.strptime(args.yesterday, "%Y-%m-%d")
-        except ValueError:
-            # If the date format is incorrect, raise an error and exit
-            raise ValueError(
-                "The provided date is not in the correct format (YYYY-MM-DD)."
-            )
+    # Normalize date inputs to a list of datetime objects
+    raw_dates = []
+    if args.yesterdays:
+        for entry in args.yesterdays:
+            if entry is None:
+                continue
+            # Support comma-separated entries
+            parts = [p.strip() for p in entry.split(",") if p.strip()]
+            raw_dates.extend(parts)
+
+    if not raw_dates:
+        # Default to single date: yesterday (backward-compatible behavior)
+        target_dates = [dt.today() - timedelta(days=1)]
     else:
-        # If no date is provided, set yesterday to the day before the current date
-        yesterday = dt.today() - timedelta(days=1)
+        target_dates = []
+        for s in raw_dates:
+            try:
+                target_dates.append(dt.strptime(s, "%Y-%m-%d"))
+            except ValueError:
+                raise SystemExit(
+                    f"error: invalid -y/--yesterday value '{s}'. Expected YYYY-MM-DD."
+                )
 
-    period_month = yesterday.strftime("%Y-%m")
+    # Process each requested date independently
+    for run_date in target_dates:
+        period_month = run_date.strftime("%Y-%m")
 
-    period_start_dt = yesterday.replace(
-        hour=00, minute=00, second=0, microsecond=0
-    ) - timedelta(days=6)
-    period_end_dt = yesterday.replace(hour=23, minute=50, second=0, microsecond=0)
-    period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
+        period_start_dt = run_date.replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=6)
+        period_end_dt = run_date.replace(hour=23, minute=50, second=0, microsecond=0)
+        period_range = pd.period_range(start=period_start_dt, end=period_end_dt, freq="M")
 
-    logger.info("Starting data export process")
-    # Call data_exporter for each required month, passing the update mode
-    for period in period_range:
-        period_str = period.strftime("%Y-%m")
-        logger.info(
-            f"Running data export for period {period_str} with mode '{args.update_mode}'"
+        logger.info(f"Starting data export process for date {run_date.date()}")
+        # Call data_exporter for each required month, passing the update mode
+        for period in period_range:
+            period_str = period.strftime("%Y-%m")
+            logger.info(
+                f"Running data export for period {period_str} with mode '{args.update_mode}'"
+            )
+            # Use lambda to pass extra arguments to the function called by try_forever
+            try_forever(
+                lambda p, mode: data_exporter.main_export_flow(
+                    period=p, update_mode=mode
+                ),
+                period_str,
+                args.update_mode,
+            )
+
+        # Alarm data is now exported by data_exporter
+
+        logger.info(f"Starting calculation process for date {run_date.date()}")
+        # Loop over the period range and call the functions
+        for period in period_range:
+            period_month = period.strftime("%Y-%m")
+            results = try_forever(calculation.full_calculation, period_month)
+            try_forever(results.to_pickle, f"./monthly_data/results/{period_month}.pkl")
+            try_forever(results_grouper.process_grouped_results, results, period_month)
+
+        logger.info(f"Starting weekly calculation process for date {run_date.date()}")
+        df_exploi = try_forever(
+            hebdo_calc.main, period_range, period_start_dt, period_end_dt
         )
-        # Use lambda to pass extra arguments to the function called by try_forever
+        df_Top15 = try_forever(
+            hebdo_calc.Top15, period_range, period_start_dt, period_end_dt
+        )
+
+        title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
+
+        logger.info(f"Starting email sending process for date {run_date.date()}")
         try_forever(
-            # Call the main export orchestration function from data_exporter
-            lambda p, mode: data_exporter.main_export_flow(
-                period=p, update_mode=mode
-            ), # Pass period and mode explicitly
-            period_str,  # First arg for the lambda (p)
-            args.update_mode,  # Second arg for the lambda (mode)
+            email_send.send_email,
+            df=df_exploi,
+            receiver_email=config.EMAIL_CONFIG["receiver_default"],
+            subject=f"Indisponibilité {title}",
         )
 
-    # Alarm data is now exported by data_exporter
+        try_forever(
+            email_send.send_email,
+            df=df_Top15,
+            receiver_email=config.EMAIL_CONFIG["receiver_default"],
+            subject=f"Top 15 Total Energy Lost(MWh){title}",
+        )
 
-    logger.info("Starting calculation process")
-    # Loop over the period range and call the functions
-    for period in period_range:
-        period_month = period.strftime("%Y-%m")
-        # Calculate results for this period
-        results = try_forever(calculation.full_calculation, period_month)
-        try_forever(results.to_pickle, f"./monthly_data/results/{period_month}.pkl")
+        logger.info(f"All processes for date {run_date.date()} completed successfully")
 
-        # Process and save grouped results for this period
-        try_forever(results_grouper.process_grouped_results, results, period_month)
-
-    logger.info("Starting weekly calculation process")
-    df_exploi = try_forever(
-        hebdo_calc.main, period_range, period_start_dt, period_end_dt
-    )
-    df_Top15 = try_forever(
-        hebdo_calc.Top15, period_range, period_start_dt, period_end_dt
-    )
-
-    title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
-
-    logger.info("Starting email sending process")
-    try_forever(
-        email_send.send_email,
-        df=df_exploi,
-        receiver_email=config.EMAIL_CONFIG["receiver_default"],
-        subject=f"Indisponibilité {title}",
-        # cc_emails=[config.EMAIL_CONFIG["receiver_default"], config.EMAIL_CONFIG["receiver_default"], config.EMAIL_CONFIG["receiver_default"]],
-    )
-
-    try_forever(
-        email_send.send_email,
-        df=df_Top15,
-        receiver_email=config.EMAIL_CONFIG["receiver_default"],
-        subject=f"Top 15 Total Energy Lost(MWh){title}",
-    )
-
-    logger.info("All processes completed successfully")
-
-    # Simple countdown without threading
+    # Final countdown after all dates are processed
     simple_countdown(30)

@@ -751,6 +751,13 @@
     "time_on": "2025-01-01 00:00:00",
     "time_off": "2025-01-01 00:00:00",
     "notes": "wrong time_on"
+  },
+  {
+    "id": 12499477,
+    "alarm_code": 1001,
+    "station_nr": 2307457,
+    "time_off": "2025-07-12 11:20:00",
+    "notes": "wrong time_off"
   }
   ]
 }

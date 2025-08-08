@@ -77,7 +77,6 @@ class Config:
             logger.error(error_msg)
             raise ValueError(error_msg)
 
-        logger.info("Configuration loaded successfully from environment variables")
 
     def get_db_config(self):
         """Get database configuration as a dictionary."""

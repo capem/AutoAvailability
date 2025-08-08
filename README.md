@@ -16,78 +16,127 @@ AutoTasks is a comprehensive data processing and analysis system for wind farm o
 
 ## Usage
 
-### Basic Usage
+### TUI Interface (Recommended)
 
-Run the main script to process data for the previous day and the preceding 6 days:
+Launch the new Terminal User Interface for an intuitive graphical experience:
 
+```bash
+uv run python tui_main.py
 ```
-python main.py
+
+The TUI provides:
+- Interactive menus and progress bars
+- Real-time monitoring and logging
+- Manual alarm adjustment interface
+- System status and health checks
+- Settings and configuration management
+
+See [Quick Start Guide](QUICK_START_TUI.md) for immediate usage or [TUI Documentation](TUI_README.md) for comprehensive details.
+
+### Command Line Interface (Legacy)
+
+Run the original CLI to process data for the previous day and the preceding 6 days:
+
+```bash
+# Via TUI launcher
+uv run python tui_main.py --cli
+
+# Or directly
+uv run python main.py
 ```
 
-### Command Line Arguments
+### Command Line Arguments (CLI Mode)
 
 - `-y, --yesterday YYYY-MM-DD`: Specify a custom date instead of using yesterday
-- `--update-mode {check,append,force-overwrite}`: Control how existing data is handled
+- `--update-mode {check,append,force-overwrite,process-existing}`: Control how existing data is handled
   - `check`: Report changes without modifying existing data
   - `append`: Update/append while preserving deleted records (default)
   - `force-overwrite`: Export fresh data, overwriting existing files
+  - `process-existing`: Skip DB/export, process existing files only
 
 ### Examples
 
-Process data for a specific date:
-```
-python main.py -y 2023-12-31
+**TUI Examples (Recommended):**
+```bash
+# Launch TUI interface
+uv run python tui_main.py
+
+# Then use interactive menus:
+# - Option 2: Run Yesterday
+# - Option 3: Custom Date → Enter 2023-12-31
+# - Option 4: Manage Alarms
 ```
 
-Force a complete refresh of data:
-```
-python main.py --update-mode force-overwrite
+**CLI Examples:**
+```bash
+# Process data for a specific date
+uv run python tui_main.py --cli -y 2023-12-31
+
+# Force a complete refresh of data
+uv run python tui_main.py --cli --update-mode force-overwrite
+
+# Process multiple dates
+uv run python tui_main.py --cli -y 2023-12-31,2024-01-01 --update-mode append
 ```
 
 ### Manual Alarm Adjustments
 
 The system allows you to manually set timeoff values for alarms that have no timeoff in the database. This is useful for correcting data issues or handling special cases.
 
-List all current manual adjustments:
-```
-python adjust_alarms.py list
-```
-
-Add a new manual adjustment:
-```
-python adjust_alarms.py add <alarm_id> <alarm_code> <station_nr> "<time_on>" "<time_off>" --notes "Optional notes"
+**TUI Method (Recommended):**
+```bash
+uv run python tui_main.py
+# Select option 4 (Manage Alarms)
+# Use interactive interface to add, edit, or delete adjustments
 ```
 
-Example:
-```
-python adjust_alarms.py add 12345 1005 2307405 "2023-01-15 08:30:00" "2023-01-15 14:45:00" --notes "Manually adjusted due to missing timeoff"
-```
+**CLI Method:**
+```bash
+# List all current manual adjustments
+uv run python -m src.adjust_alarms list
 
-Update an existing adjustment:
-```
-python adjust_alarms.py update <alarm_id> --time_off "<new_time_off>" --notes "Updated notes"
-```
+# Add a new manual adjustment
+uv run python -m src.adjust_alarms add 12345 1005 2307405 "2023-01-15 08:30:00" "2023-01-15 14:45:00" --notes "Manually adjusted due to missing timeoff"
 
-Remove an adjustment:
-```
-python adjust_alarms.py remove <alarm_id>
+# Update an existing adjustment
+uv run python -m src.adjust_alarms update 12345 --time_off "2023-01-15 16:00:00" --notes "Updated notes"
+
+# Remove an adjustment
+uv run python -m src.adjust_alarms remove 12345
 ```
 
 ## Project Structure
 
-- `main.py`: Entry point for the application
-- `data_exporter.py`: Handles data export from SQL Server
-- `db_export.py`: Low-level database export functionality
-- `calculation.py`: Performs calculations on exported data
-- `hebdo_calc.py`: Generates weekly calculations and reports
-- `email_send.py`: Handles email notifications
-- `adjust_alarms.py`: Tool for managing manual alarm adjustments
-- `manual_adjustments.json`: Stores manual alarm timeoff adjustments
+### Entry Points
+- `tui_main.py`: **Main entry point** - Launches TUI or CLI interface
+- `main.py`: Legacy CLI entry point
+- `test_tui.py`: TUI testing and validation script
+
+### TUI Components
+- `src/simple_tui.py`: Simple terminal-compatible TUI (default)
+- `src/tui_app.py`: Advanced Textual-based TUI (fallback)
+
+### Core Modules
+- `src/data_exporter.py`: Handles data export from SQL Server
+- `src/calculation.py`: Performs calculations on exported data
+- `src/hebdo_calc.py`: Generates weekly calculations and reports
+- `src/email_send.py`: Handles email notifications
+- `src/adjust_alarms.py`: Tool for managing manual alarm adjustments
+- `src/config.py`: Configuration management
+- `src/logger_config.py`: Logging configuration
+
+### Data and Configuration
+- `config/manual_adjustments.json`: Stores manual alarm timeoff adjustments
+- `config/`: Configuration files (Excel files, etc.)
 - `monthly_data/`: Directory for storing exported and processed data
-  - `exports/`: Raw exports from the database
-  - `uploads/`: Processed data files ready for analysis
+  - `data/`: Raw exports from the database (organized by type)
   - `results/`: Calculation results and reports
 - `logs/`: Application logs
+
+### Documentation
+- `TUI_README.md`: Comprehensive TUI documentation
+- `QUICK_START_TUI.md`: Quick start guide for TUI
+- `README.md`: Main project documentation
 
 ## Configuration
 

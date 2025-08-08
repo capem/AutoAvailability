@@ -60,6 +60,25 @@ def list_adjustments():
         console.print("[yellow]No manual adjustments found.[/yellow]")
         return
 
+    # Log any adjustments missing required fields
+    missing_fields = []
+    for adj in adjustments["adjustments"]:
+        missing = []
+        if "id" not in adj:
+            missing.append("id")
+        if "alarm_code" not in adj:
+            missing.append("alarm_code")
+        if "station_nr" not in adj:
+            missing.append("station_nr")
+        if "time_on" not in adj and "time_off" not in adj:
+            missing.append("time_on and time_off")
+
+        if missing:
+            missing_fields.append(f"Adjustment ID {adj.get('id', 'Unknown')}: missing {', '.join(missing)}")
+    
+    if missing_fields:
+        logger.warning("Found adjustments with missing fields: " + "; ".join(missing_fields))
+
     table = Table(title="Manual Alarm Adjustments")
     table.add_column("ID", justify="right", style="cyan")
     table.add_column("Alarm Code", justify="right", style="green")
@@ -70,12 +89,19 @@ def list_adjustments():
     table.add_column("Last Updated", style="blue")
 
     for adj in adjustments["adjustments"]:
+        # Check for required fields
+        alarm_id = adj.get("id", "Unknown")
+        alarm_code = adj.get("alarm_code", "Unknown")
+        station_nr = adj.get("station_nr", "Unknown")
+        time_on = adj.get("time_on", "MISSING")
+        time_off = adj.get("time_off", "MISSING")
+        
         table.add_row(
-            str(adj["id"]),
-            str(adj["alarm_code"]),
-            str(adj["station_nr"]),
-            adj["time_on"],
-            adj["time_off"],
+            str(alarm_id),
+            str(alarm_code),
+            str(station_nr),
+            time_on,
+            time_off,
             adj.get("notes", ""),
             adj.get("last_updated", ""),
         )
@@ -89,23 +115,34 @@ def add_adjustment(args):
 
     # Check if an adjustment with this ID already exists
     for adj in adjustments["adjustments"]:
-        if adj["id"] == args.id:
+        if adj.get("id") == args.id:
             logger.error(
                 f"Adjustment with ID {args.id} already exists. Use update instead."
             )
             return False
 
-    # Validate time format
-    try:
-        time_on = datetime.strptime(args.time_on, "%Y-%m-%d %H:%M:%S")
-        time_off = datetime.strptime(args.time_off, "%Y-%m-%d %H:%M:%S")
+    if not args.time_on and not args.time_off:
+        logger.error("At least one of --time_on or --time_off must be provided.")
+        return False
 
-        # Ensure time_off is after time_on
-        if time_off <= time_on:
-            logger.error("Time Off must be after Time On")
+    time_on = None
+    if args.time_on:
+        try:
+            time_on = datetime.strptime(args.time_on, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            logger.error("Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
             return False
-    except ValueError:
-        logger.error("Invalid time format. Use YYYY-MM-DD HH:MM:SS")
+
+    time_off = None
+    if args.time_off:
+        try:
+            time_off = datetime.strptime(args.time_off, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            logger.error("Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
+            return False
+
+    if time_on and time_off and time_off <= time_on:
+        logger.error("Time Off must be after Time On")
         return False
 
     # Create new adjustment
@@ -113,11 +150,13 @@ def add_adjustment(args):
         "id": args.id,
         "alarm_code": args.alarm_code,
         "station_nr": args.station_nr,
-        "time_on": args.time_on,
-        "time_off": args.time_off,
         "notes": args.notes if args.notes else "",
         "last_updated": datetime.now().isoformat(),
     }
+    if args.time_on:
+        new_adjustment["time_on"] = args.time_on
+    if args.time_off:
+        new_adjustment["time_off"] = args.time_off
 
     adjustments["adjustments"].append(new_adjustment)
 
@@ -225,8 +264,8 @@ def main():
     add_parser.add_argument("id", type=int, help="Alarm ID")
     add_parser.add_argument("alarm_code", type=int, help="Alarm code")
     add_parser.add_argument("station_nr", type=int, help="Station number")
-    add_parser.add_argument("time_on", help="Time On (YYYY-MM-DD HH:MM:SS)")
-    add_parser.add_argument("time_off", help="Time Off (YYYY-MM-DD HH:MM:SS)")
+    add_parser.add_argument("--time_on", help="Time On (YYYY-MM-DD HH:MM:SS)")
+    add_parser.add_argument("--time_off", help="Time Off (YYYY-MM-DD HH:MM:SS)")
     add_parser.add_argument("--notes", help="Optional notes about this adjustment")
 
     # Update command

@@ -334,18 +334,30 @@ class CleanWindFarmTUI:
         table.add_column("ID", justify="right", style="cyan")
         table.add_column("Alarm Code", justify="right", style="green")
         table.add_column("Station Nr", justify="right", style="green")
-        table.add_column("Time On", style="magenta")
-        table.add_column("Time Off", style="magenta")
+        table.add_column("Time On", style="white")
+        table.add_column("Time Off", style="white")
         table.add_column("Notes", style="yellow")
+        table.add_column("Last Updated", style="blue")
 
         for adj in adjustments["adjustments"]:
+            last_updated_str = adj.get("last_updated", "")
+            if last_updated_str:
+                try:
+                    # Parse ISO format and reformat for display
+                    last_updated_dt = datetime.fromisoformat(last_updated_str)
+                    last_updated_str = last_updated_dt.strftime("%Y-%m-%d %H:%M:%S")
+                except (ValueError, TypeError):
+                    # If parsing fails, show the raw value
+                    pass
+            
             table.add_row(
-                str(adj["id"]),
-                str(adj["alarm_code"]),
-                str(adj["station_nr"]),
-                adj["time_on"],
-                adj["time_off"],
-                adj.get("notes", "")
+                str(adj.get("id", "N/A")),
+                str(adj.get("alarm_code", "N/A")),
+                str(adj.get("station_nr", "N/A")),
+                adj.get("time_on", "N/A"),
+                adj.get("time_off", "N/A"),
+                adj.get("notes", ""),
+                last_updated_str,
             )
 
         console.print(table)
@@ -360,13 +372,18 @@ class CleanWindFarmTUI:
             alarm_id = int(Prompt.ask("Alarm ID"))
             alarm_code = int(Prompt.ask("Alarm Code"))
             station_nr = int(Prompt.ask("Station Number"))
-            time_on = Prompt.ask("Time On (YYYY-MM-DD HH:MM:SS)")
-            time_off = Prompt.ask("Time Off (YYYY-MM-DD HH:MM:SS)")
+            time_on = Prompt.ask("Time On (YYYY-MM-DD HH:MM:SS, or Enter to skip)", default="")
+            time_off = Prompt.ask("Time Off (YYYY-MM-DD HH:MM:SS, or Enter to skip)", default="")
             notes = Prompt.ask("Notes (optional)", default="")
 
+            if not time_on and not time_off:
+                raise ValueError("At least one of Time On or Time Off must be provided.")
+
             # Validate time format
-            datetime.strptime(time_on, "%Y-%m-%d %H:%M:%S")
-            datetime.strptime(time_off, "%Y-%m-%d %H:%M:%S")
+            if time_on:
+                datetime.strptime(time_on, "%Y-%m-%d %H:%M:%S")
+            if time_off:
+                datetime.strptime(time_off, "%Y-%m-%d %H:%M:%S")
 
             # Create mock args object for adjust_alarms functions
             class MockArgs:
@@ -406,9 +423,9 @@ class CleanWindFarmTUI:
                     found = True
                     console.print(f"Current values for Alarm ID {alarm_id}:")
                     console.print(f"  Alarm Code: {adj['alarm_code']}")
-                    console.print(f"  Station Nr: {adj['station_nr']}")
-                    console.print(f"  Time On: {adj['time_on']}")
-                    console.print(f"  Time Off: {adj['time_off']}")
+                    console.print(f"  Station Nr: {adj.get('station_nr', 'N/A')}")
+                    console.print(f"  Time On: {adj.get('time_on', 'N/A')}")
+                    console.print(f"  Time Off: {adj.get('time_off', 'N/A')}")
                     console.print(f"  Notes: {adj.get('notes', '')}")
                     break
 

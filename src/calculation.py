@@ -402,18 +402,18 @@ def get_correction_factor_value(values):
 
 # ============================= POTENTIAL ENERGY CALCULATION FUNCTIONS =============================
 
-def calculate_potential_energy_from_met_mast(df):
+def calculate_potential_energy_from_turbine(df):
     """
-    Calculate potential energy production using meteorological mast wind speed data (Case 2).
+    Calculate potential energy production using turbine wind speed data (Case 2).
 
     This function:
     1. Loads the power curve from CB2.xlsx
     2. Creates an interpolation function from the power curve
-    3. Calculates the mean wind speed from available met mast columns
+    3. Uses turbine wind speed data (wtc_AcWindSp_mean)
     4. Applies the power curve to estimate potential energy production
 
     Args:
-        df: DataFrame containing meteorological data
+        df: DataFrame containing turbine data
 
     Returns:
         Series of potential energy values
@@ -431,27 +431,23 @@ def calculate_potential_energy_from_met_mast(df):
     )
 
     # Log debug information
-    logger.debug(f"calculate_potential_energy_from_met_mast called with DataFrame of shape {df.shape}")
+    logger.debug(f"calculate_potential_energy_from_turbine called with DataFrame of shape {df.shape}")
     logger.debug(f"Available columns in DataFrame: {list(df.columns)}")
 
-    # Define the met mast columns to use for wind speed
-    met_mast_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
-    logger.debug(f"Looking for met mast columns: {met_mast_columns}")
+    # Define the turbine wind speed column to use
+    turbine_wind_column = "wtc_AcWindSp_mean"
+    logger.debug(f"Looking for turbine wind speed column: {turbine_wind_column}")
 
-    # Filter to only use columns that exist in the DataFrame
-    available_met_mast_columns = [col for col in met_mast_columns if col in df.columns]
-    logger.debug(f"Found met mast columns: {available_met_mast_columns}")
-
-    # Calculate potential energy if any met mast columns are available
-    if available_met_mast_columns:
-        # Calculate mean wind speed across available columns
-        mean_wind_speed = df[available_met_mast_columns].mean(axis=1)
+    # Check if turbine wind speed column exists in the DataFrame
+    if turbine_wind_column in df.columns:
+        # Use turbine wind speed directly
+        wind_speed = df[turbine_wind_column]
 
         # Apply power curve and divide by 6 (10-minute intervals per hour)
-        potential_energy = power_curve_interpolator(mean_wind_speed) / 6
+        potential_energy = power_curve_interpolator(wind_speed) / 6
         return potential_energy
     else:
-        raise ValueError("None of the specified met mast columns are present in the DataFrame.")
+        raise ValueError(f"Turbine wind speed column '{turbine_wind_column}' not present in the DataFrame.")
 
 
 def calculate_potential_energy_from_statistics(period):
@@ -1066,31 +1062,40 @@ def full_calculation(period):
         # Create mask for rows with missing Epot
         missing_epot_mask = final_results["Epot"].isna()
         missing_count = missing_epot_mask.sum()
-        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with met mast data")
+        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with turbine data")
 
         # Extract rows with missing Epot
         df_for_potential_energy = final_results.loc[missing_epot_mask]
         logger.debug(f"DataFrame for potential energy calculation has shape {df_for_potential_energy.shape}")
         logger.debug(f"[full_calculation] Columns available: {list(df_for_potential_energy.columns)}")
 
-        # Check if required met mast columns exist
-        wind_speed_columns = ["met_WindSpeedRot_mean_38", "met_WindSpeedRot_mean_39", "met_WindSpeedRot_mean_246"]
-        available_columns = [col for col in wind_speed_columns if col in df_for_potential_energy.columns]
-        logger.info(f"Wind speed columns found in DataFrame: {available_columns}")
+        # Check if required turbine wind speed column exists
+        turbine_wind_column = "wtc_AcWindSp_mean"
+        logger.info(f"Looking for turbine wind speed column: {turbine_wind_column}")
 
-        # Try to calculate potential energy using met mast data
+        # Try to calculate potential energy using turbine data
         potential_energy_values = None
         try:
-            potential_energy_values = calculate_potential_energy_from_met_mast(df_for_potential_energy)
-            logger.info("Successfully calculated potential energy from met mast data")
+            potential_energy_values = calculate_potential_energy_from_turbine(df_for_potential_energy)
+            logger.info("Successfully calculated potential energy from turbine data")
         except Exception as e:
-            logger.error(f"Error calculating potential energy from met mast data: {str(e)}")
+            logger.error(f"Error calculating potential energy from turbine data: {str(e)}")
+            
+            # Fallback to statistical method (Case 3) if turbine data fails
+            try:
+                logger.info("Attempting fallback to statistical method (Case 3)")
+                # Use the period to calculate potential energy from statistics
+                potential_energy_values = calculate_potential_energy_from_statistics(period)
+                logger.info("Successfully calculated potential energy from statistical method (fallback)")
+            except Exception as e2:
+                logger.error(f"Error calculating potential energy from statistical method: {str(e2)}")
 
         # Use the maximum of calculated potential energy and actual energy
-        final_results.loc[missing_epot_mask, "Epot"] = np.maximum(
-            potential_energy_values,
-            final_results.loc[missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
-        )
+        if potential_energy_values is not None:
+            final_results.loc[missing_epot_mask, "Epot"] = np.maximum(
+                potential_energy_values,
+                final_results.loc[missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
+            )
 
     # -------- Calculate energy loss --------------------------------------
     # Calculate total energy loss (potential - actual)

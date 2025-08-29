@@ -14,7 +14,7 @@ from rich.logging import RichHandler
 LOG_DIRECTORY = "./logs"
 LOG_FILENAME = "application.log"
 DEFAULT_LOG_LEVEL = logging.INFO
-FILE_LOG_LEVEL = logging.WARNING
+FILE_LOG_LEVEL = logging.INFO
 CONSOLE_LOG_LEVEL = logging.INFO
 
 # Ensure log directory exists

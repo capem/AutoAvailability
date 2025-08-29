@@ -37,23 +37,24 @@ console = Console()
 
 @contextlib.contextmanager
 def suppress_logging():
-    """Context manager to suppress all logging output"""
-    # Get all loggers
-    loggers = [logging.getLogger(name) for name in logging.root.manager.loggerDict]
-    loggers.append(logging.getLogger())
+    """Context manager to suppress console logging output while preserving file logging"""
+    # Get the root logger
+    root_logger = logging.getLogger()
     
-    # Store original levels
-    original_levels = {}
-    for logger_obj in loggers:
-        original_levels[logger_obj] = logger_obj.level
-        logger_obj.setLevel(logging.CRITICAL + 1)  # Suppress all output
+    # Find the console handler (RichHandler) and temporarily remove it
+    console_handlers = [handler for handler in root_logger.handlers if isinstance(handler, logger_config.RichHandler)]
     
     try:
+        # Remove console handlers temporarily
+        for handler in console_handlers:
+            root_logger.removeHandler(handler)
+        
+        # Keep file logging active
         yield
     finally:
-        # Restore original levels
-        for logger_obj, level in original_levels.items():
-            logger_obj.setLevel(level)
+        # Restore console handlers
+        for handler in console_handlers:
+            root_logger.addHandler(handler)
 
 
 class CleanWindFarmTUI:

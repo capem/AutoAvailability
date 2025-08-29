@@ -411,12 +411,13 @@ def calculate_potential_energy_from_turbine(df):
     2. Creates an interpolation function from the power curve
     3. Uses turbine wind speed data (wtc_AcWindSp_mean)
     4. Applies the power curve to estimate potential energy production
+    5. Returns NaN for rows where no wind data is available
 
     Args:
         df: DataFrame containing turbine data
 
     Returns:
-        Series of potential energy values
+        Series of potential energy values (with NaN for missing wind data)
     """
     # Load power curve data
     power_curve = pd.read_excel("./config/CB2.xlsx")
@@ -443,8 +444,15 @@ def calculate_potential_energy_from_turbine(df):
         # Use turbine wind speed directly
         wind_speed = df[turbine_wind_column]
 
+        # Create mask for missing wind data
+        missing_wind_mask = wind_speed.isna()
+        
         # Apply power curve and divide by 6 (10-minute intervals per hour)
         potential_energy = power_curve_interpolator(wind_speed) / 6
+        
+        # Set NaN for rows where wind data is missing
+        potential_energy[missing_wind_mask] = np.nan
+        
         return potential_energy
     else:
         raise ValueError(f"Turbine wind speed column '{turbine_wind_column}' not present in the DataFrame.")
@@ -500,7 +508,7 @@ def calculate_potential_energy_from_statistics(period):
         normalized_annual_energy *
         (1 / 8760) *
         (1 / 6) *
-        seasonal_wind_factors.loc[period].values[0]
+        seasonal_wind_factors.loc[int(period.split('-')[1])].values[0]
     )
 
     return potential_energy
@@ -725,6 +733,13 @@ def full_calculation(period):
     3. Processes alarms and calculates real periods
     4. Calculates energy loss by category
     5. Returns a DataFrame with detailed availability results
+
+    Potential Energy (Epot) Calculation Cascade:
+    Case 1: AverageWithWakeLossAdjustments - For non-operational turbines, uses average energy from operational turbines 
+            at the same timestamp with wake loss correction factor applied
+    Case 2: Anemometer - Uses turbine-specific wind speed data with power curve interpolation
+    Case 3: SWE (Statistical Wind Estimation) - Uses statistical wind distribution with seasonal factors
+    Special Case: Epot=EnergyProduced - For operational turbines, actual energy produced is used as potential
 
     Args:
         period: Period in YYYY-MM format
@@ -1037,7 +1052,7 @@ def full_calculation(period):
     operational_turbines["Epot"] = operational_turbines["wtc_kWG1TotE_accum"]
     
     # Add method column for operational turbines
-    operational_turbines["Epot_Method"] = "AverageWithWakeLossAdjustments"
+    operational_turbines["Epot_Method"] = "Epot=EnergyProduced"
 
     # Process non-operational turbines
     non_operational_turbines = results.loc[~operational_turbines_mask].copy()
@@ -1051,6 +1066,7 @@ def full_calculation(period):
     # If actual energy exceeds potential energy, use actual energy as potential
     mask_higher_actual = non_operational_turbines["Epot"] < non_operational_turbines["wtc_kWG1TotE_accum"]
     non_operational_turbines.loc[mask_higher_actual, "Epot"] = non_operational_turbines.loc[mask_higher_actual, "wtc_kWG1TotE_accum"]
+    non_operational_turbines.loc[mask_higher_actual, "Epot_Method"] = "Epot=EnergyProduced"
 
     # Combine operational and non-operational turbines
     final_results = pd.concat([non_operational_turbines, operational_turbines], sort=False)
@@ -1058,8 +1074,6 @@ def full_calculation(period):
     # Sort by station and timestamp
     final_results = final_results.sort_values(["StationId", "TimeStamp"]).reset_index(drop=True)
     
-    # Initialize Epot_Method column
-    final_results["Epot_Method"] = "AverageWithWakeLossAdjustments"
 
     # Log debug information
     logger.debug(f"[full_calculation] Pre-Epot check 'final_results' columns: {list(final_results.columns)}")
@@ -1071,44 +1085,54 @@ def full_calculation(period):
         # Create mask for rows with missing Epot
         missing_epot_mask = final_results["Epot"].isna()
         missing_count = missing_epot_mask.sum()
-        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with turbine data")
+        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with turbine data (Case 2: Anemometer)")
 
         # Extract rows with missing Epot
         df_for_potential_energy = final_results.loc[missing_epot_mask]
         logger.debug(f"DataFrame for potential energy calculation has shape {df_for_potential_energy.shape}")
         logger.debug(f"[full_calculation] Columns available: {list(df_for_potential_energy.columns)}")
 
-        # Check if required turbine wind speed column exists
-        turbine_wind_column = "wtc_AcWindSp_mean"
-        logger.info(f"Looking for turbine wind speed column: {turbine_wind_column}")
-
-        # Try to calculate potential energy using turbine data
-        potential_energy_values = None
+        # Try to calculate potential energy using turbine data (Case 2: Anemometer)
+        potential_energy_values_case2 = None
         try:
-            potential_energy_values = calculate_potential_energy_from_turbine(df_for_potential_energy)
-            logger.info("Successfully calculated potential energy from turbine data")
-            # Add method column for turbine data method
-            final_results.loc[missing_epot_mask, "Epot_Method"] = "Anemometer"
+            potential_energy_values_case2 = calculate_potential_energy_from_turbine(df_for_potential_energy)
+            logger.info("Successfully calculated potential energy from turbine data (Case 2: Anemometer)")
+            
+            # Update Epot and Epot_Method for rows where we got valid values from Case 2
+            valid_case2_mask = ~np.isnan(potential_energy_values_case2)
+            if valid_case2_mask.any():
+                # Create a mask for the original DataFrame that corresponds to valid Case 2 values
+                case2_update_mask = missing_epot_mask.copy()
+                case2_update_mask.loc[missing_epot_mask] = valid_case2_mask
+                
+                # Update Epot and Epot_Method for valid Case 2 values
+                final_results.loc[case2_update_mask, "Epot_Method"] = "Anemometer"
+                final_results.loc[case2_update_mask, "Epot"] = np.maximum(
+                    potential_energy_values_case2[valid_case2_mask],
+                    final_results.loc[case2_update_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
+                )
         except Exception as e:
             logger.error(f"Error calculating potential energy from turbine data: {str(e)}")
-            
-            # Fallback to statistical method (Case 3) if turbine data fails
-            try:
-                logger.info("Attempting fallback to statistical method (Case 3)")
-                # Use the period to calculate potential energy from statistics
-                potential_energy_values = calculate_potential_energy_from_statistics(period)
-                logger.info("Successfully calculated potential energy from statistical method (fallback)")
-                # Add method column for statistical method
-                final_results.loc[missing_epot_mask, "Epot_Method"] = "SWE"
-            except Exception as e2:
-                logger.error(f"Error calculating potential energy from statistical method: {str(e2)}")
 
-        # Use the maximum of calculated potential energy and actual energy
-        if potential_energy_values is not None:
-            final_results.loc[missing_epot_mask, "Epot"] = np.maximum(
-                potential_energy_values,
-                final_results.loc[missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
-            )
+        # For rows that are still missing Epot after Case 2, use statistical method (Case 3: SWE)
+        still_missing_epot_mask = final_results["Epot"].isna()
+        if still_missing_epot_mask.any():
+            still_missing_count = still_missing_epot_mask.sum()
+            logger.info(f"Found {still_missing_count} NA values in 'Epot' column after Case 2, using statistical method (Case 3: SWE)")
+            
+            try:
+                # Use the period to calculate potential energy from statistics
+                potential_energy_values_case3 = calculate_potential_energy_from_statistics(period)
+                logger.info("Successfully calculated potential energy from statistical method (Case 3: SWE)")
+                
+                # Update Epot and Epot_Method for remaining missing values
+                final_results.loc[still_missing_epot_mask, "Epot_Method"] = "SWE"
+                final_results.loc[still_missing_epot_mask, "Epot"] = np.maximum(
+                    potential_energy_values_case3,
+                    final_results.loc[still_missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
+                )
+            except Exception as e:
+                logger.error(f"Error calculating potential energy from statistical method: {str(e)}")
 
     # -------- Calculate energy loss --------------------------------------
     # Calculate total energy loss (potential - actual)

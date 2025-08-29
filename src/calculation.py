@@ -1035,12 +1035,18 @@ def full_calculation(period):
 
     # For operational turbines, potential energy equals actual energy
     operational_turbines["Epot"] = operational_turbines["wtc_kWG1TotE_accum"]
+    
+    # Add method column for operational turbines
+    operational_turbines["Epot_Method"] = "AverageWithWakeLossAdjustments"
 
     # Process non-operational turbines
     non_operational_turbines = results.loc[~operational_turbines_mask].copy()
 
     # Merge potential energy to non-operational turbines
     non_operational_turbines = pd.merge(non_operational_turbines, potential_energy, on="TimeStamp", how="left")
+    
+    # Add method column for non-operational turbines
+    non_operational_turbines["Epot_Method"] = "AverageWithWakeLossAdjustments"
 
     # If actual energy exceeds potential energy, use actual energy as potential
     mask_higher_actual = non_operational_turbines["Epot"] < non_operational_turbines["wtc_kWG1TotE_accum"]
@@ -1051,6 +1057,9 @@ def full_calculation(period):
 
     # Sort by station and timestamp
     final_results = final_results.sort_values(["StationId", "TimeStamp"]).reset_index(drop=True)
+    
+    # Initialize Epot_Method column
+    final_results["Epot_Method"] = "AverageWithWakeLossAdjustments"
 
     # Log debug information
     logger.debug(f"[full_calculation] Pre-Epot check 'final_results' columns: {list(final_results.columns)}")
@@ -1078,6 +1087,8 @@ def full_calculation(period):
         try:
             potential_energy_values = calculate_potential_energy_from_turbine(df_for_potential_energy)
             logger.info("Successfully calculated potential energy from turbine data")
+            # Add method column for turbine data method
+            final_results.loc[missing_epot_mask, "Epot_Method"] = "Anemometer"
         except Exception as e:
             logger.error(f"Error calculating potential energy from turbine data: {str(e)}")
             
@@ -1087,6 +1098,8 @@ def full_calculation(period):
                 # Use the period to calculate potential energy from statistics
                 potential_energy_values = calculate_potential_energy_from_statistics(period)
                 logger.info("Successfully calculated potential energy from statistical method (fallback)")
+                # Add method column for statistical method
+                final_results.loc[missing_epot_mask, "Epot_Method"] = "SWE"
             except Exception as e2:
                 logger.error(f"Error calculating potential energy from statistical method: {str(e2)}")
 

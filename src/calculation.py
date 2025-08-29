@@ -1263,7 +1263,7 @@ def full_calculation(period):
 
     # -------- Finalize results --------------------------------------
     # Round numeric columns to 2 decimal places and convert to float32
-    numeric_columns = list(set(final_results.columns) - set(("StationId", "TimeStamp", "UK Text")))
+    numeric_columns = list(set(final_results.columns) - set(("StationId", "TimeStamp", "UK Text", "Epot_Method")))
     final_results[numeric_columns] = final_results[numeric_columns].round(2).astype(np.float32)
 
     # Log the earliest alarm date

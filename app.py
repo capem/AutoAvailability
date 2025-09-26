@@ -140,12 +140,12 @@ class CleanWindFarmTUI:
     def run_today(self):
         """Process data for today"""
         target_date = datetime.now()
-        self.process_date(target_date)
+        self.process_dates([target_date])
         
     def run_yesterday(self):
         """Process data for yesterday"""
         target_date = datetime.now() - timedelta(days=1)
-        self.process_date(target_date)
+        self.process_dates([target_date])
         
     def run_custom_date(self):
         """Process data for custom date(s)"""
@@ -187,9 +187,16 @@ class CleanWindFarmTUI:
         }
         self.update_mode = mode_map[mode_choice]
         
-        # Process each date
+        # Process all dates
+        self.process_dates(dates)
+
+    def process_dates(self, dates: List[datetime]):
+        """Process a list of dates and show a single confirmation at the end."""
         for date in dates:
             self.process_date(date)
+
+        console.print("\nPress Enter to continue...")
+        input()
             
     def process_date(self, target_date: datetime):
         """Process data for a specific date with clean output"""
@@ -225,15 +232,13 @@ class CleanWindFarmTUI:
             else:
                 console.print("[yellow]Step 4/4: Email reports skipped (disabled)[/yellow]")
                     
+            
             console.print(f"\n[bold green]✓ Processing completed successfully for {target_date.strftime('%Y-%m-%d')}[/bold green]")
             self.last_run_date = target_date
             
         except Exception as e:
             console.print(f"\n[bold red]✗ Processing failed: {str(e)}[/bold red]")
             logger.exception("Processing failed")
-            
-        console.print("\nPress Enter to continue...")
-        input()
         
     def _export_data_clean(self, run_date: datetime):
         """Clean data export"""

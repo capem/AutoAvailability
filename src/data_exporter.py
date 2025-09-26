@@ -649,6 +649,9 @@ class DBExporter:
                     )
                     final_df = db_df
                 else:
+                    # Preserve the original column order from the existing file
+                    original_column_order = existing_df.columns.tolist()
+                    
                     # Ensure consistent columns before merge
                     all_cols = list(set(db_df.columns) | set(existing_df.columns))
                     db_df = db_df.reindex(columns=all_cols)
@@ -724,6 +727,36 @@ class DBExporter:
                         # Drop the merge indicator if it exists
                         if "_merge" in final_df.columns:
                             final_df.drop(columns=["_merge"], inplace=True)
+
+                        # Ensure consistent data types and column order to match original file
+                        # First, align data types with the original file where possible
+                        for col in original_column_order:
+                            if col in final_df.columns and col in existing_df.columns:
+                                # Preserve the original data type from existing file when possible
+                                orig_dtype = existing_df[col].dtype
+                                curr_dtype = final_df[col].dtype
+                                
+                                # Only convert if the data types are compatible and different
+                                if orig_dtype != curr_dtype:
+                                    # Handle numeric types - preserve original types and format
+                                    if pd.api.types.is_numeric_dtype(orig_dtype) and pd.api.types.is_numeric_dtype(curr_dtype):
+                                        try:
+                                            final_df[col] = final_df[col].astype(orig_dtype)
+                                        except (ValueError, TypeError):
+                                            # If conversion fails, keep the current type but ensure no decimal points for integers
+                                            if 'int' in str(orig_dtype):
+                                                final_df[col] = pd.to_numeric(final_df[col], errors='coerce').astype(orig_dtype if orig_dtype in [int, 'int64', 'int32'] else 'float64')
+                                    # Handle datetime types
+                                    elif pd.api.types.is_datetime64_any_dtype(orig_dtype):
+                                        final_df[col] = pd.to_datetime(final_df[col], errors='coerce')
+                        
+                        # Reorder columns to match the original file order
+                        # Only include columns that exist in the final DataFrame
+                        existing_cols = [col for col in original_column_order if col in final_df.columns]
+                        new_cols = [col for col in final_df.columns if col not in original_column_order]
+                        final_column_order = existing_cols + new_cols
+                        
+                        final_df = final_df.reindex(columns=final_column_order)
 
                         logger.info(
                             f"Reconciliation for {table_name}: {len(new_rows)} new, {len(deleted_rows)} deleted (kept), {len(common_rows)} common/updated."

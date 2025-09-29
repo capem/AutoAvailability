@@ -88,7 +88,7 @@ def apply_cascade_method(alarm_summary_df):
         DataFrame with calculated real alarm periods
     """
     # Sort by alarm start time and ID
-    alarm_summary_df.sort_values(["TimeOn", "ID"], inplace=True)
+    alarm_summary_df.sort_values(["ID"], inplace=True)
 
     # Apply cascade function to each turbine group
     processed_df = alarm_summary_df.groupby("StationNr", group_keys=True).apply(

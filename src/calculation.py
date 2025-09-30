@@ -88,7 +88,7 @@ def apply_cascade_method(alarm_summary_df):
         DataFrame with calculated real alarm periods
     """
     # Sort by alarm start time and ID
-    alarm_summary_df.sort_values(["ID"], inplace=True)
+    alarm_summary_df.sort_values(["StationNr", "TimeOn", "ID"], inplace=True)
 
     # Apply cascade function to each turbine group
     processed_df = alarm_summary_df.groupby("StationNr", group_keys=True).apply(
@@ -194,112 +194,155 @@ def convert_to_10min_intervals(alarm_df, alarm_type="1-0"):
 def handle_alarm_code_1005_overlap(alarm_df):
     """
     Handle special case of alarm code 1005 overlapping with other alarms.
-
     This function:
     1. Removes zero-duration alarms (except code 1005)
     2. Adjusts alarm periods to account for overlaps with alarm code 1005
-    3. Handles different overlap scenarios (end, start, embedded, reverse embedded)
+    3. Handles multiple 1005 alarms overlapping with the same alarm
     4. Reapplies the cascade method to recalculate real periods
-
     Args:
         alarm_df: DataFrame containing alarm data with processed periods
-
     Returns:
         DataFrame with adjusted alarm periods accounting for code 1005 overlaps
     """
-    # Select only necessary columns
-    alarm_df = alarm_df[
-        [
-            "TimeOn",
-            "TimeOff",
-            "StationNr",
-            "Alarmcode",
-            "Parameter",
-            "ID",
-            "NewTimeOn",
-            "OldTimeOn",
-            "OldTimeOff",
-            "UK Text",
-            "Error Type",
-            "EffectiveAlarmTime",
-        ]
-    ].copy()
+    # Select only necessary columns to avoid modifying others unintentionally
+    # Added a check for column existence for robustness
+    required_cols = [
+        "TimeOn", "TimeOff", "StationNr", "Alarmcode", "Parameter", "ID",
+        "NewTimeOn", "OldTimeOn", "OldTimeOff", "UK Text", "Error Type",
+        "EffectiveAlarmTime"
+    ]
+    # Ensure all required columns are present, add if missing
+    for col in required_cols:
+        if col not in alarm_df.columns:
+            # Add a sensible default if a column is missing
+            alarm_df[col] = pd.NaT if 'Time' in col else None
+            
+    alarm_df = alarm_df[required_cols].copy()
 
     # Remove zero-duration alarms (except code 1005)
-    is_zero_duration = (alarm_df.EffectiveAlarmTime == pd.Timedelta(0)) & (alarm_df.Alarmcode != 1005)
-    alarm_df.drop(alarm_df.loc[is_zero_duration].index, inplace=True)
+    is_zero_duration = (alarm_df['EffectiveAlarmTime'] <= pd.Timedelta(0)) & (alarm_df['Alarmcode'] != 1005)
+    alarm_df = alarm_df[~is_zero_duration].copy()
 
-    # Reset index and extract all code 1005 alarms
+    # Reset index after dropping rows
     alarm_df.reset_index(drop=True, inplace=True)
-    alarms_code_1005 = alarm_df.query("Alarmcode == 1005")
 
-    # Set TimeOn to NewTimeOn for all alarms
+    # Set TimeOn to NewTimeOn for all alarms as the starting point for processing
     alarm_df["TimeOn"] = alarm_df["NewTimeOn"]
 
-    # Process each code 1005 alarm
-    for _, alarm_1005 in alarms_code_1005.iterrows():
-        # Define different overlap scenarios with alarm code 1005
+    # Restore original start times for code 1005 alarms for accurate cascading
+    mask_1005 = alarm_df["Alarmcode"] == 1005
+    alarm_df.loc[mask_1005, "TimeOn"] = alarm_df.loc[mask_1005, "OldTimeOn"]
 
-        # Scenario 1: Alarms that end during the 1005 alarm
-        overlap_end_mask = (
-            (alarm_df["TimeOn"] <= alarm_1005["TimeOn"])
-            & (alarm_df["TimeOn"] <= alarm_1005["TimeOff"])
-            & (alarm_df["TimeOff"] > alarm_1005["TimeOn"])
-            & (alarm_df["TimeOff"] <= alarm_1005["TimeOff"])
-            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
-            & (alarm_df["Alarmcode"] != 1005)
-        )
+    # Isolate all 1005 alarms for efficient lookup later.
+    # Sorting is crucial for the chronological processing logic within the loop.
+    alarms_code_1005 = alarm_df.query("Alarmcode == 1005").sort_values(
+        ["StationNr", "TimeOn", "TimeOff"]
+    ).reset_index(drop=True)
 
-        # Scenario 2: Alarms that start during the 1005 alarm
-        overlap_start_mask = (
-            (alarm_df["TimeOn"] >= alarm_1005["TimeOn"])
-            & (alarm_df["TimeOn"] <= alarm_1005["TimeOff"])
-            & (alarm_df["TimeOff"] > alarm_1005["TimeOn"])
-            & (alarm_df["TimeOff"] >= alarm_1005["TimeOff"])
-            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
-            & (alarm_df["Alarmcode"] != 1005)
-        )
+    # Get a unique list of stations that have at least one 1005 alarm.
+    # We only need to process these stations.
+    stations_with_1005 = alarms_code_1005["StationNr"].unique()
 
-        # Scenario 3: Alarms that completely span the 1005 alarm
-        embedded_mask = (
-            (alarm_df["TimeOn"] < alarm_1005["TimeOn"])
-            & (alarm_df["TimeOff"] > alarm_1005["TimeOff"])
-            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
-            & (alarm_df["Alarmcode"] != 1005)
-        )
+    # --- 2. CORE PROCESSING LOGIC ---
 
-        # Create a copy of embedded alarms for later use
-        embedded_alarms = alarm_df.loc[embedded_mask].copy()
+    # Initialize lists to store modifications. This is more efficient than
+    # modifying the DataFrame row-by-row inside the loop.
+    all_new_alarms = []
+    indices_to_remove = set()
 
-        # Adjust alarm times based on overlap scenario
-        alarm_df.loc[overlap_start_mask, "TimeOn"] = alarm_1005["TimeOff"]
-        alarm_df.loc[overlap_end_mask, "TimeOff"] = alarm_1005["TimeOn"]
+    # Process each station independently to avoid incorrect interactions.
+    for station_nr in stations_with_1005:
+        # Get all 1005 alarms for this station.
+        station_1005_alarms = alarms_code_1005[
+            alarms_code_1005["StationNr"] == station_nr
+        ]
 
-        # Handle embedded alarms (split into two alarms)
-        if embedded_mask.sum():
-            # Adjust end time of original alarm
-            alarm_df.loc[embedded_mask, "TimeOff"] = alarm_1005["TimeOn"]
+        # Get the indices of all non-1005 alarms for this station.
+        station_alarms_indices = alarm_df[
+            (alarm_df["StationNr"] == station_nr) &
+            (alarm_df["Alarmcode"] != 1005)
+        ].index
 
-            # Create new alarms for the period after code 1005
-            embedded_alarms["TimeOn"] = alarm_1005["TimeOff"]
-            alarm_df = pd.concat([alarm_df, embedded_alarms]).sort_values(["TimeOn", "ID"])
+        # Iterate through each non-1005 alarm to check for overlaps.
+        for idx in station_alarms_indices:
+            alarm = alarm_df.loc[idx]
+            alarm_on = alarm["TimeOn"]
+            alarm_off = alarm["TimeOff"]
 
-        # Scenario 4: Alarms completely contained within the 1005 alarm
-        reverse_embedded_mask = (
-            (alarm_df["TimeOn"] >= alarm_1005["TimeOn"])
-            & (alarm_df["TimeOff"] <= alarm_1005["TimeOff"])
-            & (alarm_df["StationNr"] == alarm_1005["StationNr"])
-            & (alarm_df["Alarmcode"] != 1005)
-        )
+            # Find all 1005 alarms that overlap with the current alarm's time range.
+            # The condition `(startB < endA) & (endB > startA)` is the standard
+            # and robust way to check for any temporal interval overlap.
+            overlapping_1005 = station_1005_alarms[
+                (station_1005_alarms["TimeOn"] < alarm_off) &
+                (station_1005_alarms["TimeOff"] > alarm_on)
+            ]
 
-        # Set start time equal to end time to effectively remove these alarms
-        if reverse_embedded_mask.sum():
-            alarm_df.loc[reverse_embedded_mask, "TimeOn"] = alarm_df.loc[reverse_embedded_mask, "TimeOff"]
+            # If there are no overlaps, we can skip to the next alarm.
+            if overlapping_1005.empty:
+                continue
 
-    # Restore original start times for code 1005 alarms
-    alarm_df.loc[alarm_df["Alarmcode"] == 1005, "TimeOn"] = alarm_df.loc[alarm_df["Alarmcode"] == 1005, "OldTimeOn"]
+            # --- 2a. Segment Creation Logic ---
+            segments = []
+            # Initialize a 'cursor' to track the start of the next potential valid segment.
+            # It starts at the beginning of the current alarm.
+            cursor = alarm_on
 
-    # Reapply cascade method to recalculate real periods
+            # Chronologically process each overlapping 1005 alarm.
+            for _, alarm_1005 in overlapping_1005.iterrows():
+                t1005_on = alarm_1005["TimeOn"]
+                t1005_off = alarm_1005["TimeOff"]
+
+                # If there's a gap between the cursor and the start of this 1005 alarm,
+                # that gap represents a valid, uninterrupted piece of the original alarm.
+                if cursor < t1005_on:
+                    segment_end = min(t1005_on, alarm_off)
+                    segments.append((cursor, segment_end))
+
+                # CRITICAL: Advance the cursor to the end of the current 1005 alarm.
+                # Using `max` ensures that if multiple 1005s overlap *each other*,
+                # the cursor correctly jumps to the end of the combined blackout period.
+                cursor = max(cursor, t1005_off)
+
+            # After checking all 1005s, if the cursor hasn't reached the end of the
+            # original alarm, the remaining time is the final valid segment.
+            if cursor < alarm_off:
+                segments.append((cursor, alarm_off))
+
+            # Clean up any zero-duration segments that might have been created.
+            segments = [(s, e) for s, e in segments if s < e]
+
+            # --- 2b. Applying the Results ---
+            if not segments:
+                # Case A: Alarm is completely covered by 1005s. Mark for removal.
+                indices_to_remove.add(idx)
+            elif len(segments) == 1:
+                # Case B: Alarm is trimmed. Update the original alarm in place.
+                alarm_df.loc[idx, "TimeOn"] = segments[0][0]
+                alarm_df.loc[idx, "TimeOff"] = segments[0][1]
+            else:
+                # Case C: Alarm is split. Update the original alarm to be the first
+                # segment, and create new alarm records for the subsequent segments.
+                alarm_df.loc[idx, "TimeOn"] = segments[0][0]
+                alarm_df.loc[idx, "TimeOff"] = segments[0][1]
+
+                for seg_start, seg_end in segments[1:]:
+                    new_alarm = alarm.copy()
+                    new_alarm["TimeOn"] = seg_start
+                    new_alarm["TimeOff"] = seg_end
+                    all_new_alarms.append(new_alarm)
+
+    # --- 3. FINAL DATAFRAME RECONSTRUCTION ---
+
+    # Perform batch modifications for performance.
+    if indices_to_remove:
+        alarm_df.drop(index=list(indices_to_remove), inplace=True)
+
+    if all_new_alarms:
+        new_alarms_df = pd.DataFrame(all_new_alarms)
+        alarm_df = pd.concat([alarm_df, new_alarms_df], ignore_index=True)
+
+
+    # Reapply cascade method to recalculate real periods and re-sort the dataframe
     alarm_df = apply_cascade_method(alarm_df)
 
     return alarm_df

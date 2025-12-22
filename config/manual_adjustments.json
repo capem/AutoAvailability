@@ -758,6 +758,104 @@
     "station_nr": 2307457,
     "time_off": "2025-07-12 11:20:00",
     "notes": "wrong time_off"
+  },
+  {
+    "id": 12611628,
+    "alarm_code": 64132,
+    "station_nr": 2307497,
+    "time_off": "2025-09-08 11:27:00",
+    "notes": "no timeoff"
+  },
+  {
+    "id": 11904420,
+    "alarm_code": 1001,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181483,
+    "alarm_code": 5113,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181485,
+    "alarm_code": 13907,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181486,
+    "alarm_code": 13906,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181488,
+    "alarm_code": 5112,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181492,
+    "alarm_code": 63208,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181493,
+    "alarm_code": 63203,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181500,
+    "alarm_code": 13908,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181501,
+    "alarm_code": 7100,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12230310,
+    "alarm_code": 1018,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12297958,
+    "alarm_code": 13902,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181487,
+    "alarm_code": 5111,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
+  },
+  {
+    "id": 12181491,
+    "alarm_code": 5110,
+    "station_nr": 2307405,
+    "time_off": "2023-10-07 14:32:00",
+    "notes": "wrong time off"
   }
   ]
 }

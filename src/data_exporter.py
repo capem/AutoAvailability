@@ -49,17 +49,70 @@ TABLE_MAPPINGS = {
 # Column definitions for each table (excluding unique keys where appropriate for checksum)
 # Using lists for easier maintenance
 TABLE_COLUMNS = {
-    "tblAlarmLog": ["[ID]", "[TimeOn]", "[TimeOff]", "[StationNr]", "[Alarmcode]", "[Parameter]"],
-    "tblSCMet": ["[TimeStamp]", "[StationId]", "[met_WindSpeedRot_mean]", "[met_WinddirectionRot_mean]", "[met_Pressure_mean]", "[met_TemperatureTen_mean]"],
-    "tblSCTurbine": ["[TimeStamp]", "[StationId]", "[wtc_AcWindSp_mean]", "[wtc_AcWindSp_stddev]", "[wtc_ActualWindDirection_mean]", "[wtc_ActualWindDirection_stddev]"],
-    "tblSCTurGrid": ["[TimeStamp]", "[StationId]", "[wtc_ActPower_min]", "[wtc_ActPower_max]", "[wtc_ActPower_mean]"],
-    "tblSCTurCount": ["[TimeStamp]", "[StationId]", "[wtc_kWG1Tot_accum]", "[wtc_kWG1TotE_accum]", "[wtc_kWG1TotI_accum]", "[wtc_BoostKWh_endvalue]", "[wtc_BostkWhS_endvalue]"],
-    "tblSCTurDigiIn": ["[TimeStamp]", "[StationId]", "[wtc_PowerRed_timeon]"]
+    "tblAlarmLog": [
+        "[ID]",
+        "[TimeOn]",
+        "[TimeOff]",
+        "[StationNr]",
+        "[Alarmcode]",
+        "[Parameter]",
+    ],
+    "tblSCMet": [
+        "[TimeStamp]",
+        "[StationId]",
+        "[met_WindSpeedRot_mean]",
+        "[met_WinddirectionRot_mean]",
+        "[met_Pressure_mean]",
+        "[met_TemperatureTen_mean]",
+        "[met_WindSpeedRot_min]",
+        "[met_WinddirectionRot_min]",
+        "[met_Pressure_min]",
+        "[met_TemperatureTen_min]",
+        "[met_WindSpeedRot_max]",
+        "[met_WinddirectionRot_max]",
+        "[met_Pressure_max]",
+        "[met_TemperatureTen_max]",
+        "[met_WindSpeedRot_stddev]",
+        "[met_WinddirectionRot_stddev]",
+        "[met_Pressure_stddev]",
+        "[met_TemperatureTen_stddev]",
+    ],
+    "tblSCTurbine": [
+        "[TimeStamp]",
+        "[StationId]",
+        "[wtc_AcWindSp_mean]",
+        "[wtc_AcWindSp_stddev]",
+        "[wtc_ActualWindDirection_mean]",
+        "[wtc_ActualWindDirection_stddev]",
+    ],
+    "tblSCTurGrid": [
+        "[TimeStamp]",
+        "[StationId]",
+        "[wtc_ActPower_min]",
+        "[wtc_ActPower_max]",
+        "[wtc_ActPower_mean]",
+    ],
+    "tblSCTurCount": [
+        "[TimeStamp]",
+        "[StationId]",
+        "[wtc_kWG1Tot_accum]",
+        "[wtc_kWG1TotE_accum]",
+        "[wtc_kWG1TotI_accum]",
+        "[wtc_BoostKWh_endvalue]",
+        "[wtc_BostkWhS_endvalue]",
+    ],
+    "tblSCTurDigiIn": ["[TimeStamp]", "[StationId]", "[wtc_PowerRed_timeon]"],
 }
 
 # Columns to use for checksum calculation (often excludes simple primary keys like 'ID')
 TABLE_CHECKSUM_COLUMNS = {
-    "tblAlarmLog": ["[TimeOn]", "[TimeOff]", "[StationNr]", "[Alarmcode]", "[Parameter]"],
+    "tblAlarmLog": [
+        "[TimeOn]",
+        "[TimeOff]",
+        "[StationNr]",
+        "[Alarmcode]",
+        "[Parameter]",
+    ],
     # For others, assume all columns defined in TABLE_COLUMNS are relevant for checksum
     "tblSCMet": TABLE_COLUMNS["tblSCMet"],
     "tblSCTurbine": TABLE_COLUMNS["tblSCTurbine"],
@@ -268,7 +321,7 @@ class DBExporter:
 
     def _ensure_manual_adjustments_loaded(self):
         """Ensures manual adjustments are loaded, loading them if necessary."""
-        if not hasattr(self, 'manual_adjustments') or self.manual_adjustments is None:
+        if not hasattr(self, "manual_adjustments") or self.manual_adjustments is None:
             self.manual_adjustments = self._load_manual_adjustments()
 
     def _get_metadata_path(self, csv_path):
@@ -318,8 +371,10 @@ class DBExporter:
             return ", ".join(columns)
         else:
             # Fallback: use all columns from TABLE_COLUMNS if not specified in TABLE_CHECKSUM_COLUMNS
-            logger.warning(f"Checksum columns not explicitly defined for {table_name}. Using all columns from TABLE_COLUMNS.")
-            return self._get_columns_for_table(table_name) # Reuse the other function
+            logger.warning(
+                f"Checksum columns not explicitly defined for {table_name}. Using all columns from TABLE_COLUMNS."
+            )
+            return self._get_columns_for_table(table_name)  # Reuse the other function
 
     def check_data_state(self, table_name, period_start, period_end):
         """
@@ -334,10 +389,8 @@ class DBExporter:
                 # Ensure alarm data is loaded for tblAlarmLog operations
                 self._ensure_alarm_data_loaded()
                 if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                        logger.error(
-                            "Failed to load alarms_0_1 for tblAlarmLog check."
-                        )
-                        return None, None
+                    logger.error("Failed to load alarms_0_1 for tblAlarmLog check.")
+                    return None, None
 
                 alarm_codes_tuple = tuple(self.alarms_0_1.tolist())
                 if not alarm_codes_tuple:
@@ -371,10 +424,15 @@ class DBExporter:
                 {where_clause}
                 """
 
-            logger.debug(f"Executing state check query for {table_name}")  #: {query}") # Hide query details
+            logger.debug(
+                f"Executing state check query for {table_name}"
+            )  #: {query}") # Hide query details
 
             # Use SQLAlchemy engine if available, otherwise fall back to connection pool
-            if hasattr(self.connection_pool, 'engine') and self.connection_pool.engine is not None:
+            if (
+                hasattr(self.connection_pool, "engine")
+                and self.connection_pool.engine is not None
+            ):
                 # Use SQLAlchemy engine
                 connection = self.connection_pool.engine.raw_connection()
                 try:
@@ -392,7 +450,9 @@ class DBExporter:
                         )
                         return count, checksum_agg
                     else:
-                        logger.warning(f"Could not retrieve state for {table_name} for period.")
+                        logger.warning(
+                            f"Could not retrieve state for {table_name} for period."
+                        )
                         return None, None
                 except Exception as e:
                     logger.error(f"Error executing query with SQLAlchemy engine: {e}")
@@ -414,7 +474,9 @@ class DBExporter:
                         )
                         return count, checksum_agg
                     else:
-                        logger.warning(f"Could not retrieve state for {table_name} for period.")
+                        logger.warning(
+                            f"Could not retrieve state for {table_name} for period."
+                        )
                         return None, None
 
         except pyodbc.Error as e:
@@ -429,15 +491,16 @@ class DBExporter:
         query = ""
         try:
             # Use SQLAlchemy engine if available, otherwise fall back to connection pool
-            if hasattr(self.connection_pool, 'engine') and self.connection_pool.engine is not None:
+            if (
+                hasattr(self.connection_pool, "engine")
+                and self.connection_pool.engine is not None
+            ):
                 # Use SQLAlchemy engine directly with pandas
                 if table_name == "tblAlarmLog":
                     # Ensure alarm data is loaded for tblAlarmLog operations
                     self._ensure_alarm_data_loaded()
                     if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                        logger.error(
-                            "Failed to load alarms_0_1 for tblAlarmLog fetch."
-                        )
+                        logger.error("Failed to load alarms_0_1 for tblAlarmLog fetch.")
                         return pd.DataFrame()
                     query = self.construct_query(
                         period_start, period_end, self.alarms_0_1
@@ -454,7 +517,9 @@ class DBExporter:
                 )
                 # Use SQLAlchemy engine directly with pandas
                 df = pd.read_sql(query, self.connection_pool.engine)
-                logger.info(f"Fetched {len(df)} rows from DB for {table_name} using SQLAlchemy engine")
+                logger.info(
+                    f"Fetched {len(df)} rows from DB for {table_name} using SQLAlchemy engine"
+                )
             else:
                 # Fall back to using the connection pool if engine is not available
                 with self.connection_pool.get_connection() as conn:
@@ -479,9 +544,13 @@ class DBExporter:
                     logger.info(
                         f"Fetching data for {table_name} ({period_start} to {period_end})"
                     )
-                    logger.warning("Using direct pyodbc connection as fallback (SQLAlchemy engine not available)")
+                    logger.warning(
+                        "Using direct pyodbc connection as fallback (SQLAlchemy engine not available)"
+                    )
                     df = pd.read_sql(query, conn)
-                    logger.info(f"Fetched {len(df)} rows from DB for {table_name} using pyodbc connection")
+                    logger.info(
+                        f"Fetched {len(df)} rows from DB for {table_name} using pyodbc connection"
+                    )
 
             # Standardize TimeStamp columns (for both SQLAlchemy and pyodbc paths)
             for col in ["TimeStamp", "TimeOn", "TimeOff"]:
@@ -513,7 +582,9 @@ class DBExporter:
                 try:
                     # Apply time_off adjustment if present
                     if "time_off" in adjustment and adjustment["time_off"]:
-                        time_off = pd.to_datetime(adjustment["time_off"], errors="coerce")
+                        time_off = pd.to_datetime(
+                            adjustment["time_off"], errors="coerce"
+                        )
                         if pd.notna(time_off):  # Check if conversion was successful
                             df_adjusted.loc[mask, "TimeOff"] = time_off
                             adjustment_count += 1
@@ -651,7 +722,7 @@ class DBExporter:
                 else:
                     # Preserve the original column order from the existing file
                     original_column_order = existing_df.columns.tolist()
-                    
+
                     # Ensure consistent columns before merge
                     all_cols = list(set(db_df.columns) | set(existing_df.columns))
                     db_df = db_df.reindex(columns=all_cols)
@@ -667,10 +738,18 @@ class DBExporter:
                         final_df = db_df
                     else:
                         # Add logging before merge
-                        logger.debug(f"[_reconcile] Pre-merge db_df columns: {list(db_df.columns)}")
-                        logger.debug(f"[_reconcile] Pre-merge db_df dtypes:\n{db_df.dtypes.to_string()}")
-                        logger.debug(f"[_reconcile] Pre-merge existing_df columns: {list(existing_df.columns)}")
-                        logger.debug(f"[_reconcile] Pre-merge existing_df dtypes:\n{existing_df.dtypes.to_string()}")
+                        logger.debug(
+                            f"[_reconcile] Pre-merge db_df columns: {list(db_df.columns)}"
+                        )
+                        logger.debug(
+                            f"[_reconcile] Pre-merge db_df dtypes:\n{db_df.dtypes.to_string()}"
+                        )
+                        logger.debug(
+                            f"[_reconcile] Pre-merge existing_df columns: {list(existing_df.columns)}"
+                        )
+                        logger.debug(
+                            f"[_reconcile] Pre-merge existing_df dtypes:\n{existing_df.dtypes.to_string()}"
+                        )
 
                         # Merge based on unique keys
                         merged_df = pd.merge(
@@ -681,7 +760,9 @@ class DBExporter:
                             how="outer",
                             indicator=True,
                         )
-                        logger.debug(f"[_reconcile] Post-merge merged_df columns: {list(merged_df.columns)}")
+                        logger.debug(
+                            f"[_reconcile] Post-merge merged_df columns: {list(merged_df.columns)}"
+                        )
 
                         # Identify new, deleted, and potentially updated rows
                         new_rows = merged_df[merged_df["_merge"] == "left_only"].copy()
@@ -692,16 +773,24 @@ class DBExporter:
 
                         # Select only the DB columns and restore original names for new rows
                         db_cols_new = [c for c in new_rows.columns if c.endswith("_db")]
-                        new_rows = new_rows[db_cols_new].copy() # Select only _db columns
+                        new_rows = new_rows[
+                            db_cols_new
+                        ].copy()  # Select only _db columns
                         new_rows.columns = [
-                            c.replace("_db", "") for c in new_rows.columns # Rename
+                            c.replace("_db", "")
+                            for c in new_rows.columns  # Rename
                         ]
 
                         # Select only the existing columns and restore original names for deleted rows
-                        ex_cols_deleted = [c for c in deleted_rows.columns if c.endswith("_ex")]
-                        deleted_rows = deleted_rows[ex_cols_deleted].copy() # Select only _ex columns
+                        ex_cols_deleted = [
+                            c for c in deleted_rows.columns if c.endswith("_ex")
+                        ]
+                        deleted_rows = deleted_rows[
+                            ex_cols_deleted
+                        ].copy()  # Select only _ex columns
                         deleted_rows.columns = [
-                            c.replace("_ex", "") for c in deleted_rows.columns # Rename
+                            c.replace("_ex", "")
+                            for c in deleted_rows.columns  # Rename
                         ]
 
                         # For common rows, check for updates (simple check: keep DB version)
@@ -714,16 +803,24 @@ class DBExporter:
                         common_rows_corrected.columns = [
                             c.replace("_db", "") for c in common_rows_corrected.columns
                         ]
-                        logger.debug(f"[_reconcile] Pre-concat common_rows_corrected columns: {list(common_rows_corrected.columns)}")
-                        logger.debug(f"[_reconcile] Pre-concat new_rows columns: {list(new_rows.columns)}")
-                        logger.debug(f"[_reconcile] Pre-concat deleted_rows columns: {list(deleted_rows.columns)}")
+                        logger.debug(
+                            f"[_reconcile] Pre-concat common_rows_corrected columns: {list(common_rows_corrected.columns)}"
+                        )
+                        logger.debug(
+                            f"[_reconcile] Pre-concat new_rows columns: {list(new_rows.columns)}"
+                        )
+                        logger.debug(
+                            f"[_reconcile] Pre-concat deleted_rows columns: {list(deleted_rows.columns)}"
+                        )
 
                         # Combine results
                         final_df = pd.concat(
                             [common_rows_corrected, new_rows, deleted_rows],
                             ignore_index=True,
                         )
-                        logger.debug(f"[_reconcile] Post-concat final_df columns: {list(final_df.columns)}")
+                        logger.debug(
+                            f"[_reconcile] Post-concat final_df columns: {list(final_df.columns)}"
+                        )
                         # Drop the merge indicator if it exists
                         if "_merge" in final_df.columns:
                             final_df.drop(columns=["_merge"], inplace=True)
@@ -735,27 +832,50 @@ class DBExporter:
                                 # Preserve the original data type from existing file when possible
                                 orig_dtype = existing_df[col].dtype
                                 curr_dtype = final_df[col].dtype
-                                
+
                                 # Only convert if the data types are compatible and different
                                 if orig_dtype != curr_dtype:
                                     # Handle numeric types - preserve original types and format
-                                    if pd.api.types.is_numeric_dtype(orig_dtype) and pd.api.types.is_numeric_dtype(curr_dtype):
+                                    if pd.api.types.is_numeric_dtype(
+                                        orig_dtype
+                                    ) and pd.api.types.is_numeric_dtype(curr_dtype):
                                         try:
-                                            final_df[col] = final_df[col].astype(orig_dtype)
+                                            final_df[col] = final_df[col].astype(
+                                                orig_dtype
+                                            )
                                         except (ValueError, TypeError):
                                             # If conversion fails, keep the current type but ensure no decimal points for integers
-                                            if 'int' in str(orig_dtype):
-                                                final_df[col] = pd.to_numeric(final_df[col], errors='coerce').astype(orig_dtype if orig_dtype in [int, 'int64', 'int32'] else 'float64')
+                                            if "int" in str(orig_dtype):
+                                                final_df[col] = pd.to_numeric(
+                                                    final_df[col], errors="coerce"
+                                                ).astype(
+                                                    orig_dtype
+                                                    if orig_dtype
+                                                    in [int, "int64", "int32"]
+                                                    else "float64"
+                                                )
                                     # Handle datetime types
-                                    elif pd.api.types.is_datetime64_any_dtype(orig_dtype):
-                                        final_df[col] = pd.to_datetime(final_df[col], errors='coerce')
-                        
+                                    elif pd.api.types.is_datetime64_any_dtype(
+                                        orig_dtype
+                                    ):
+                                        final_df[col] = pd.to_datetime(
+                                            final_df[col], errors="coerce"
+                                        )
+
                         # Reorder columns to match the original file order
                         # Only include columns that exist in the final DataFrame
-                        existing_cols = [col for col in original_column_order if col in final_df.columns]
-                        new_cols = [col for col in final_df.columns if col not in original_column_order]
+                        existing_cols = [
+                            col
+                            for col in original_column_order
+                            if col in final_df.columns
+                        ]
+                        new_cols = [
+                            col
+                            for col in final_df.columns
+                            if col not in original_column_order
+                        ]
                         final_column_order = existing_cols + new_cols
-                        
+
                         final_df = final_df.reindex(columns=final_column_order)
 
                         logger.info(
@@ -768,7 +888,13 @@ class DBExporter:
                 )
                 final_df = db_df
 
-            # 4. Export the final DataFrame
+            # 4. Apply data integrity checks for met data
+            if table_name == "tblSCMet":
+                from .integrity import check_met_integrity
+
+                final_df = check_met_integrity(final_df)
+
+            # 5. Export the final DataFrame
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             final_df.to_csv(
                 output_path, index=False
@@ -814,10 +940,40 @@ class DBExporter:
             # Handle process-existing mode: skip DB/export, process existing file
             if update_mode == "process-existing":
                 if os.path.exists(output_path):
-                    logger.info(f"[process-existing] Processing existing file: {output_path}")
+                    logger.info(
+                        f"[process-existing] Processing existing file: {output_path}"
+                    )
                     try:
                         df = pd.read_csv(output_path)
-                        logger.info(f"[process-existing] {len(df)} rows found in {output_path}")
+                        logger.info(
+                            f"[process-existing] {len(df)} rows found in {output_path}"
+                        )
+
+                        # Apply data integrity checks if this is the met table
+                        if table_name == "tblSCMet" and not df.empty:
+                            from .integrity import check_met_integrity
+
+                            logger.info(
+                                f"[process-existing] Checking integrity for {output_path}"
+                            )
+                            df_clean = check_met_integrity(df)
+
+                            # Save if changes were made (replacements with NaN)
+                            # Note: Nan comparisons can be tricky, but check_met_integrity returns a copy
+                            # and we are comparing with original.
+                            # Better to trust that check_met_integrity modifies if it logs.
+                            # But equals() handles NaNs correctly (NaN == NaN).
+                            # Only if we replaced a value with NaN will equals be false.
+                            if not df_clean.equals(df):
+                                logger.info(
+                                    f"[process-existing] Integrity issues found and fixed. Saving: {output_path}"
+                                )
+                                df_clean.to_csv(output_path, index=False)
+                                df = df_clean  # Update reference
+                            else:
+                                logger.info(
+                                    "[process-existing] No integrity issues found."
+                                )
 
                         # Apply manual adjustments if this is the alarm table
                         if table_name == "tblAlarmLog" and not df.empty:
@@ -834,18 +990,28 @@ class DBExporter:
 
                             # Save the updated file with adjustments
                             if not df_adjusted.equals(df):
-                                logger.info(f"[process-existing] Saving updated file with manual adjustments: {output_path}")
+                                logger.info(
+                                    f"[process-existing] Saving updated file with manual adjustments: {output_path}"
+                                )
                                 df_adjusted.to_csv(output_path, index=False)
-                                logger.debug("[process-existing] Manual adjustments applied, but metadata unchanged (represents DB state)")
+                                logger.debug(
+                                    "[process-existing] Manual adjustments applied, but metadata unchanged (represents DB state)"
+                                )
                             else:
-                                logger.info("[process-existing] No new adjustments to apply")
+                                logger.info(
+                                    "[process-existing] No new adjustments to apply"
+                                )
 
                         return True
                     except Exception as e:
-                        logger.error(f"[process-existing] Failed to read {output_path}: {e}")
+                        logger.error(
+                            f"[process-existing] Failed to read {output_path}: {e}"
+                        )
                         return False
                 else:
-                    logger.warning(f"[process-existing] File does not exist: {output_path}")
+                    logger.warning(
+                        f"[process-existing] File does not exist: {output_path}"
+                    )
                     return False
 
             # Calculate period start and end dates
@@ -949,6 +1115,7 @@ class DBExporter:
             )
             return "*"
 
+
 # --- Main Export Function ---
 
 
@@ -1030,7 +1197,6 @@ def ensure_directories():
         os.makedirs(os.path.join(BASE_DATA_PATH, file_type.upper()), exist_ok=True)
 
 
-
 def export_data_for_period(
     period, file_types=None, update_mode="append"
 ):  # Added update_mode
@@ -1107,13 +1273,13 @@ def main_export_flow(
         all_types = file_types
 
     # All requested types will be handled in the parallel export step
-    data_file_types = all_types # Use all requested types directly
+    data_file_types = all_types  # Use all requested types directly
 
     # Removed separate handling for 'sum' type
 
     # Export all requested data types in parallel
     data_results = {}
-    if data_file_types: # Check if there are any types to export
+    if data_file_types:  # Check if there are any types to export
         data_results = export_data_for_period(
             period, data_file_types, update_mode=update_mode
         )
@@ -1129,6 +1295,7 @@ def main_export_flow(
 
 
 # --- Helper Functions ---
+
 
 def generate_period_range(start_period, end_period=None):
     """
@@ -1166,6 +1333,7 @@ def generate_period_range(start_period, end_period=None):
 
     return periods
 
+
 # --- Standalone Execution ---
 
 if __name__ == "__main__":
@@ -1176,7 +1344,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--period-start",
         required=True,
-        help="Start period in YYYY-MM format (e.g., 2020-01)"
+        help="Start period in YYYY-MM format (e.g., 2020-01)",
     )
     parser.add_argument(
         "--period-end",
@@ -1202,7 +1370,9 @@ if __name__ == "__main__":
         if args.period_end:
             datetime.strptime(args.period_end, "%Y-%m")
     except ValueError:
-        logger.error("Invalid period format. Please use YYYY-MM format (e.g., 2023-01).")
+        logger.error(
+            "Invalid period format. Please use YYYY-MM format (e.g., 2023-01)."
+        )
         exit(1)
 
     # Generate list of periods to process

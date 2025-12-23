@@ -55,6 +55,13 @@ class Config:
         )
         self.BASE_DATA_PATH = os.getenv("BASE_DATA_PATH", "./monthly_data/data")
 
+        # Met Integrity Thresholds
+        self.MET_WINDSPEED_RANGE = [0, 50]
+        self.MET_WINDDIRECTION_RANGE = [0, 360]
+        self.MET_PRESSURE_RANGE = [800, 1100]
+        self.MET_TEMPERATURE_RANGE = [-50, 60]
+        self.MET_STUCK_INTERVALS = 3
+
     def _validate_config(self):
         """Validate that required configuration values are present."""
         required_vars = [
@@ -111,3 +118,10 @@ EMAIL_CONFIG = config.get_email_config()
 ALARMS_FILE_PATH = config.CONFIG_ALARMS_FILE
 MANUAL_ADJUSTMENTS_FILE = config.CONFIG_MANUAL_ADJUSTMENTS_FILE
 BASE_DATA_PATH = config.BASE_DATA_PATH
+
+# Met Integrity Thresholds
+MET_WINDSPEED_RANGE = config.MET_WINDSPEED_RANGE
+MET_WINDDIRECTION_RANGE = config.MET_WINDDIRECTION_RANGE
+MET_PRESSURE_RANGE = config.MET_PRESSURE_RANGE
+MET_TEMPERATURE_RANGE = config.MET_TEMPERATURE_RANGE
+MET_STUCK_INTERVALS = config.MET_STUCK_INTERVALS

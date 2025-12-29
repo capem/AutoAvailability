@@ -679,40 +679,27 @@ For detailed logs, use option 5 (View Logs) after processing.
         self.running = False
 
 
-def main_cli():
-    """Original CLI entry point"""
-    # This function would contain the original CLI logic from main.py
-    # For now, it's a placeholder.
-    console.print("[bold yellow]Running in legacy CLI mode.[/bold yellow]")
-    # (Original CLI implementation would go here)
+
+
 
 
 def main():
     """Main entry point for clean TUI"""
     parser = argparse.ArgumentParser(description="Wind Farm Data Processing System")
-    parser.add_argument(
-        "--cli",
-        action="store_true",
-        help="Launch the original command-line interface instead of the TUI."
-    )
     args = parser.parse_args()
 
     # Initialize logging
     logger_config.configure_logging()
 
-    if args.cli:
-        # If --cli flag is present, run the original CLI
-        return main_cli()
-    else:
-        # Otherwise, run the TUI
-        try:
-            tui = CleanWindFarmTUI()
-            tui.run()
-        except Exception as e:
-            console.print(f"[red]Fatal error: {str(e)}[/red]")
-            logger.exception("Fatal error in TUI")
-            return 1
-        return 0
+    # Run the TUI
+    try:
+        tui = CleanWindFarmTUI()
+        tui.run()
+    except Exception as e:
+        console.print(f"[red]Fatal error: {str(e)}[/red]")
+        logger.exception("Fatal error in TUI")
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

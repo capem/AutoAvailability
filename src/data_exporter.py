@@ -27,6 +27,7 @@ from sqlalchemy import create_engine
 # Import centralized logging and configuration
 from . import config
 from . import logger_config
+from . import integrity
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -653,6 +654,24 @@ class DBExporter:
                 logger.warning(
                     f"DB fetch for {table_name} returned empty but DB count was {db_count}."
                 )
+            
+            # --- Integrated Data Completeness Check ---
+            # Check for gaps immediately after fetch to avoid redundant queries later
+            try:
+                check_result = integrity.check_completeness(db_df, period_start, period_end)
+                if check_result.get("missing_count", 0) > 0:
+                    logger.warning(
+                        f"COMPLETENESS CHECK WARNING for {table_name}: "
+                        f"{check_result['missing_count']} missing intervals "
+                        f"({check_result['completeness_percentage']}% complete). "
+                        f"Proceeding with export."
+                    )
+                else:
+                    logger.debug(f"Completeness check passed for {table_name}")
+            except Exception as e:
+                # Do not block export on check failure
+                logger.error(f"Error checking completeness for {table_name}: {e}")
+            # ------------------------------------------
 
             # 2. Read existing CSV if relevant for append/check modes
             existing_df = pd.DataFrame()
@@ -1017,9 +1036,12 @@ class DBExporter:
             # Calculate period start and end dates
             period_dt = datetime.strptime(period, "%Y-%m")
             period_start = period_dt.strftime("%Y-%m-%d %H:%M:%S")
-            # End date is the start of the next month
+            # End date is the start of the next month, capped at NOW if it's in the future
+            # This prevents checking for future data
             next_month = period_dt.replace(day=1) + relativedelta(months=1)
-            period_end = next_month.strftime("%Y-%m-%d %H:%M:%S")
+            period_end_dt = min(next_month, datetime.now())
+                
+            period_end = period_end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
             logger.info(
                 f"Exporting {table_name} for period {period} ({period_start} to {period_end}) with mode '{update_mode}'"

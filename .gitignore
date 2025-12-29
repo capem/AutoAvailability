@@ -12,3 +12,5 @@ __pycache__/
 
 # Environment variables file (contains sensitive information)
 .env
+
+/node-v24.12.0-win-x64

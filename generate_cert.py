@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import ipaddress
 from pathlib import Path
 from cryptography import x509
@@ -32,10 +32,10 @@ def generate_self_signed_cert():
     ).serial_number(
         x509.random_serial_number()
     ).not_valid_before(
-        datetime.utcnow()
+        datetime.now(timezone.utc)
     ).not_valid_after(
         # Valid for 365 days
-        datetime.utcnow() + timedelta(days=3650)
+        datetime.now(timezone.utc) + timedelta(days=3650)
     ).add_extension(
         x509.SubjectAlternativeName([
             x509.DNSName(u"localhost"),

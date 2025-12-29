@@ -80,6 +80,32 @@ def get_manager():
     return _manager, _processing_status
 
 
+def cleanup_resources():
+    """Cleanup multiprocessing resources on shutdown."""
+    global _manager, _current_process
+    
+    logger.info("Cleaning up resources...")
+    
+    if _current_process is not None and _current_process.is_alive():
+        logger.info("Terminating running process...")
+        try:
+            _current_process.terminate()
+            _current_process.join(timeout=2)
+            if _current_process.is_alive():
+                _current_process.kill()
+        except Exception as e:
+            logger.error(f"Error terminating process: {e}")
+            
+    if _manager is not None:
+        logger.info("Shutting down multiprocessing manager...")
+        try:
+            _manager.shutdown()
+        except Exception as e:
+            logger.error(f"Error shutting down manager: {e}")
+            
+    logger.info("Cleanup complete.")
+
+
 def run_processing_worker(status_dict, dates: List[str], update_mode: str):
     """Worker function that runs in a separate process."""
     try:

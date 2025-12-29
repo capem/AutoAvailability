@@ -48,7 +48,11 @@ export default function Dashboard() {
     const { data: processingStatus } = useQuery({
         queryKey: ['processingStatus'],
         queryFn: getProcessingStatus,
-        refetchInterval: 1000,
+        refetchInterval: (query) => {
+            const status = query.state.data?.status
+            // Poll fast when active, slow when idle
+            return status === 'running' || status === 'starting' ? 1000 : 30000
+        },
     })
 
     const { data: systemStatus } = useQuery({

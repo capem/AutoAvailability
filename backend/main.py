@@ -14,10 +14,21 @@ from fastapi.responses import FileResponse
 
 from .api import router
 
+from contextlib import asynccontextmanager
+from .api import router, cleanup_resources
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    yield
+    # Shutdown
+    cleanup_resources()
+
 app = FastAPI(
     title="Wind Farm Data Processing API",
     description="Backend API for Wind Farm Data Processing System",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS configuration - allow frontend to connect
@@ -54,3 +65,39 @@ if FRONTEND_DIST.exists():
         if index_file.exists():
             return FileResponse(index_file)
         return {"error": "Frontend not built"}
+
+
+def _patch_asyncio_windows():
+    """
+    Patches asyncio's ProactorBasePipeTransport to suppress ConnectionResetError
+    on Windows during shutdown/connection loss.
+    """
+    import sys
+    if sys.platform == "win32":
+        try:
+            import asyncio.proactor_events
+            
+            # Access the class directly
+            _ProactorBasePipeTransport = asyncio.proactor_events._ProactorBasePipeTransport
+            
+            # Save original method preventing double patch
+            if not hasattr(_ProactorBasePipeTransport, "_original_call_connection_lost"):
+                _ProactorBasePipeTransport._original_call_connection_lost = _ProactorBasePipeTransport._call_connection_lost
+            
+            original_method = _ProactorBasePipeTransport._original_call_connection_lost
+
+            def patched_call_connection_lost(self, exc):
+                try:
+                    original_method(self, exc)
+                except ConnectionResetError:
+                    # Suppress WinError 10054
+                    pass
+            
+            _ProactorBasePipeTransport._call_connection_lost = patched_call_connection_lost
+        except ImportError:
+            # Should not happen on Windows but safe guard
+            pass
+
+# Apply the patch immediately on import
+_patch_asyncio_windows()
+

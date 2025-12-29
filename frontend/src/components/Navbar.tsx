@@ -26,7 +26,11 @@ export default function Navbar() {
     const { data: processingStatus } = useQuery({
         queryKey: ['processingStatus'],
         queryFn: getProcessingStatus,
-        refetchInterval: 2000,
+        refetchInterval: (query) => {
+            const status = query.state.data?.status
+            // Poll fast when active, slow when idle
+            return status === 'running' || status === 'starting' ? 2000 : 30000
+        },
     })
 
     const getStatusColor = () => {

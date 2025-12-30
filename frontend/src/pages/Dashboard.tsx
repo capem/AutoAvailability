@@ -263,7 +263,7 @@ export default function Dashboard() {
                     </Card.Section>
 
                     <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
-                        {systemStatus?.components.map((component) => (
+                        {systemStatus?.components?.map((component) => (
                             <Paper key={component.component} p="md" radius="md" withBorder>
                                 <Group gap="sm" mb="xs">
                                     <ThemeIcon

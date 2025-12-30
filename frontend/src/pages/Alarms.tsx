@@ -4,7 +4,6 @@ import {
     Title,
     Text,
     Card,
-    Table,
     Button,
     Group,
     Stack,
@@ -14,13 +13,19 @@ import {
     ActionIcon,
     Badge,
     Tooltip,
-    LoadingOverlay,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { IconPlus, IconEdit, IconTrash, IconCheck, IconX } from '@tabler/icons-react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import {
+    IconPlus,
+    IconEdit,
+    IconTrash,
+    IconCheck,
+    IconX,
+} from '@tabler/icons-react'
 import dayjs from 'dayjs'
+import { DataTable, type DataTableSortStatus } from 'mantine-datatable'
 
 import { getAlarms, addAlarm, updateAlarm, deleteAlarm } from '../api'
 import type { AlarmAdjustment } from '../api'
@@ -38,9 +43,28 @@ export default function Alarms() {
         notes: '',
     })
 
-    const { data: alarmsData, isLoading } = useQuery({
-        queryKey: ['alarms'],
-        queryFn: getAlarms,
+    const [page, setPage] = useState(1)
+    const PAGE_SIZE = 10
+
+    const [filters, setFilters] = useState({
+        alarm_code: '',
+        station_nr: '',
+    })
+
+    const [sortStatus, setSortStatus] = useState<DataTableSortStatus<AlarmAdjustment>>({
+        columnAccessor: 'id',
+        direction: 'desc',
+    })
+
+    const { data: alarmsData, isLoading, isFetching } = useQuery({
+        queryKey: ['alarms', page, filters, sortStatus],
+        queryFn: () => getAlarms(page, PAGE_SIZE, {
+            alarm_code: filters.alarm_code || undefined,
+            station_nr: filters.station_nr || undefined,
+            sort_by: sortStatus.columnAccessor,
+            sort_order: sortStatus.direction,
+        }),
+        placeholderData: keepPreviousData,
     })
 
     const addMutation = useMutation({
@@ -188,89 +212,108 @@ export default function Alarms() {
                 </Group>
 
                 {/* Alarms Table */}
-                <Card shadow="sm" padding="lg" radius="md" withBorder pos="relative">
-                    <LoadingOverlay visible={isLoading} />
-
-                    {adjustments.length === 0 ? (
-                        <Text c="dimmed" ta="center" py="xl">
-                            No manual adjustments found
-                        </Text>
-                    ) : (
-                        <Table striped highlightOnHover>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>ID</Table.Th>
-                                    <Table.Th>Alarm Code</Table.Th>
-                                    <Table.Th>Station Nr</Table.Th>
-                                    <Table.Th>Time On</Table.Th>
-                                    <Table.Th>Time Off</Table.Th>
-                                    <Table.Th>Notes</Table.Th>
-                                    <Table.Th>Last Updated</Table.Th>
-                                    <Table.Th>Actions</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {adjustments.map((alarm, index) => (
-                                    <Table.Tr key={`${alarm.id}-${index}`}>
-                                        <Table.Td>
-                                            <Badge variant="light">{alarm.id}</Badge>
-                                        </Table.Td>
-                                        <Table.Td>{alarm.alarm_code}</Table.Td>
-                                        <Table.Td>{alarm.station_nr}</Table.Td>
-                                        <Table.Td>
-                                            {alarm.time_on ? (
-                                                <Text size="sm">{dayjs(alarm.time_on).format('YYYY-MM-DD HH:mm')}</Text>
-                                            ) : (
-                                                <Text size="sm" c="dimmed">—</Text>
-                                            )}
-                                        </Table.Td>
-                                        <Table.Td>
-                                            {alarm.time_off ? (
-                                                <Text size="sm">{dayjs(alarm.time_off).format('YYYY-MM-DD HH:mm')}</Text>
-                                            ) : (
-                                                <Text size="sm" c="dimmed">—</Text>
-                                            )}
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Text size="sm" lineClamp={1} maw={150}>
-                                                {alarm.notes || '—'}
-                                            </Text>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Text size="xs" c="dimmed">
-                                                {alarm.last_updated
-                                                    ? dayjs(alarm.last_updated).format('YYYY-MM-DD HH:mm')
-                                                    : '—'}
-                                            </Text>
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Group gap={4}>
-                                                <Tooltip label="Edit">
-                                                    <ActionIcon
-                                                        variant="subtle"
-                                                        color="blue"
-                                                        onClick={() => handleOpenEdit(alarm)}
-                                                    >
-                                                        <IconEdit size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                                <Tooltip label="Delete">
-                                                    <ActionIcon
-                                                        variant="subtle"
-                                                        color="red"
-                                                        onClick={() => handleDelete(alarm.id)}
-                                                        loading={deleteMutation.isPending}
-                                                    >
-                                                        <IconTrash size={16} />
-                                                    </ActionIcon>
-                                                </Tooltip>
-                                            </Group>
-                                        </Table.Td>
-                                    </Table.Tr>
-                                ))}
-                            </Table.Tbody>
-                        </Table>
-                    )}
+                <Card shadow="sm" padding={0} radius="md" withBorder>
+                    <DataTable
+                        withTableBorder={false}
+                        borderRadius="md"
+                        minHeight={200}
+                        loaderColor="blue"
+                        fetching={isLoading || isFetching}
+                        records={adjustments}
+                        columns={[
+                            {
+                                accessor: 'id',
+                                title: 'ID',
+                                sortable: true,
+                                render: (record) => <Badge variant="light">{record.id}</Badge>,
+                            },
+                            {
+                                accessor: 'alarm_code',
+                                title: 'Alarm Code',
+                                sortable: true,
+                                filter: (
+                                    <TextInput
+                                        size="xs"
+                                        placeholder="Filter..."
+                                        value={filters.alarm_code}
+                                        onChange={(e) => setFilters({ ...filters, alarm_code: e.target.value })}
+                                    />
+                                ),
+                                filtering: filters.alarm_code !== '',
+                            },
+                            {
+                                accessor: 'station_nr',
+                                title: 'Station Nr',
+                                sortable: true,
+                                filter: (
+                                    <TextInput
+                                        size="xs"
+                                        placeholder="Filter..."
+                                        value={filters.station_nr}
+                                        onChange={(e) => setFilters({ ...filters, station_nr: e.target.value })}
+                                    />
+                                ),
+                                filtering: filters.station_nr !== '',
+                            },
+                            {
+                                accessor: 'time_on',
+                                title: 'Time On',
+                                sortable: true,
+                                render: (record) => record.time_on ? dayjs(record.time_on).format('YYYY-MM-DD HH:mm') : <Text size="sm" c="dimmed">—</Text>,
+                            },
+                            {
+                                accessor: 'time_off',
+                                title: 'Time Off',
+                                sortable: true,
+                                render: (record) => record.time_off ? dayjs(record.time_off).format('YYYY-MM-DD HH:mm') : <Text size="sm" c="dimmed">—</Text>,
+                            },
+                            {
+                                accessor: 'notes',
+                                title: 'Notes',
+                                render: (record) => <Text size="sm" lineClamp={1} maw={150}>{record.notes || '—'}</Text>,
+                            },
+                            {
+                                accessor: 'last_updated',
+                                title: 'Last Updated',
+                                sortable: true,
+                                render: (record) => record.last_updated ? <Text size="xs" c="dimmed">{dayjs(record.last_updated).format('YYYY-MM-DD HH:mm')}</Text> : '—',
+                            },
+                            {
+                                accessor: 'actions',
+                                title: 'Actions',
+                                textAlign: 'right',
+                                render: (record) => (
+                                    <Group gap={4} justify="right">
+                                        <Tooltip label="Edit">
+                                            <ActionIcon
+                                                variant="subtle"
+                                                color="blue"
+                                                onClick={() => handleOpenEdit(record)}
+                                            >
+                                                <IconEdit size={16} />
+                                            </ActionIcon>
+                                        </Tooltip>
+                                        <Tooltip label="Delete">
+                                            <ActionIcon
+                                                variant="subtle"
+                                                color="red"
+                                                onClick={() => handleDelete(record.id)}
+                                                loading={deleteMutation.isPending}
+                                            >
+                                                <IconTrash size={16} />
+                                            </ActionIcon>
+                                        </Tooltip>
+                                    </Group>
+                                ),
+                            },
+                        ]}
+                        totalRecords={alarmsData?.total || 0}
+                        recordsPerPage={PAGE_SIZE}
+                        page={page}
+                        onPageChange={setPage}
+                        sortStatus={sortStatus}
+                        onSortStatusChange={setSortStatus as any}
+                    />
                 </Card>
             </Stack>
 

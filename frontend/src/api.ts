@@ -42,6 +42,14 @@ export interface SystemStatus {
     processing: ProcessingStatus
 }
 
+export interface AlarmsResponse {
+    adjustments: AlarmAdjustment[]
+    total: number
+    page: number
+    page_size: number
+    total_pages: number
+}
+
 // API Functions
 export const processData = async (request: ProcessRequest) => {
     const response = await api.post('/process', request)
@@ -58,8 +66,22 @@ export const getProcessingStatus = async (): Promise<ProcessingStatus> => {
     return response.data
 }
 
-export const getAlarms = async (): Promise<{ adjustments: AlarmAdjustment[] }> => {
-    const response = await api.get('/alarms')
+export interface AlarmsFilters {
+    alarm_code?: string
+    station_nr?: string
+    sort_by?: string
+    sort_order?: 'asc' | 'desc'
+}
+
+export const getAlarms = async (page: number = 1, pageSize: number = 10, filters: AlarmsFilters = {}): Promise<AlarmsResponse> => {
+    let url = `/alarms?page=${page}&page_size=${pageSize}`
+
+    if (filters.alarm_code) url += `&alarm_code=${filters.alarm_code}`
+    if (filters.station_nr) url += `&station_nr=${filters.station_nr}`
+    if (filters.sort_by) url += `&sort_by=${filters.sort_by}`
+    if (filters.sort_order) url += `&sort_order=${filters.sort_order}`
+
+    const response = await api.get(url)
     return response.data
 }
 

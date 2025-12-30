@@ -240,10 +240,63 @@ async def get_processing_status():
 
 
 @router.get("/alarms")
-async def list_alarms():
-    """List all alarm adjustments."""
-    adjustments = adjust_alarms.load_adjustments()
-    return adjustments
+async def list_alarms(
+    page: int = 1,
+    page_size: int = 10,
+    alarm_code: Optional[int] = None,
+    station_nr: Optional[int] = None,
+    sort_by: Optional[str] = None,
+    sort_order: str = "asc"
+):
+    """List all alarm adjustments with filtering, sorting, and pagination."""
+    data = adjust_alarms.load_adjustments()
+    all_adjustments = data.get("adjustments", [])
+    
+    # Filtering
+    if alarm_code is not None:
+        all_adjustments = [a for a in all_adjustments if a.get("alarm_code") == alarm_code]
+    
+    if station_nr is not None:
+        all_adjustments = [a for a in all_adjustments if a.get("station_nr") == station_nr]
+    
+    # Sorting
+    if sort_by:
+        reverse = sort_order.lower() == "desc"
+        def get_sort_key(item):
+            val = item.get(sort_by)
+            
+            # String fields: Force string conversion
+            if sort_by in ["time_on", "time_off", "notes", "last_updated"]:
+                if val is None:
+                    return ""
+                return str(val)
+                
+            # Numeric fields: Force int conversion
+            if val is None:
+                return 0
+            try:
+                return float(val) # Handle int or float
+            except (ValueError, TypeError):
+                return 0 # Default to 0 if not a number
+            
+        all_adjustments.sort(key=get_sort_key, reverse=reverse)
+    else:
+        # Default sort by ID desc (newest first)
+        all_adjustments.sort(key=lambda x: x.get("id", 0), reverse=True)
+
+    total = len(all_adjustments)
+    start = (page - 1) * page_size
+    end = start + page_size
+    
+    paginated_adjustments = all_adjustments[start:end]
+    
+    return {
+        "adjustments": paginated_adjustments,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 1
+    }
 
 
 @router.post("/alarms")

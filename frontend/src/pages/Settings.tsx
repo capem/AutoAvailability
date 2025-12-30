@@ -74,7 +74,7 @@ export default function Settings() {
                     </Card.Section>
 
                     <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                        {systemStatus?.components.map((component) => {
+                        {systemStatus?.components?.map((component) => {
                             const Icon = getIcon(component.component)
                             return (
                                 <Paper key={component.component} p="md" radius="md" withBorder>

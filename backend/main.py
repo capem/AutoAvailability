@@ -7,7 +7,7 @@ Main entry point with CORS setup and API router registration.
 import os
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -61,6 +61,12 @@ if FRONTEND_DIST.exists():
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA index.html for all non-API routes."""
+        # Don't intercept API routes
+        # Check both relative and absolute path scenarios
+        path_to_check = full_path.lstrip('/')
+        if path_to_check.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found")
+        
         index_file = FRONTEND_DIST / "index.html"
         if index_file.exists():
             return FileResponse(index_file)

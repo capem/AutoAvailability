@@ -13,6 +13,7 @@ import {
     ActionIcon,
     Badge,
     Tooltip,
+    Checkbox,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
 import { notifications } from '@mantine/notifications'
@@ -27,7 +28,7 @@ import {
 import dayjs from 'dayjs'
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable'
 
-import { getAlarms, addAlarm, updateAlarm, deleteAlarm } from '../api'
+import { getAlarms, addAlarm, updateAlarm, deleteAlarm, bulkDeleteAlarms, bulkUpdateAlarms, getAlarmIds } from '../api'
 import type { AlarmAdjustment } from '../api'
 
 export default function Alarms() {
@@ -40,6 +41,19 @@ export default function Alarms() {
         station_nr: 0,
         time_on: '',
         time_off: '',
+        notes: '',
+    })
+
+    // Bulk Actions State
+    const [selectedRecords, setSelectedRecords] = useState<AlarmAdjustment[]>([])
+    const [selectAllPages, setSelectAllPages] = useState(false)
+    const [bulkEditOpened, { open: openBulkEdit, close: closeBulkEdit }] = useDisclosure(false)
+    const [bulkFormData, setBulkFormData] = useState({
+        updateTimeOn: false,
+        time_on: '',
+        updateTimeOff: false,
+        time_off: '',
+        updateNotes: false,
         notes: '',
     })
 
@@ -135,6 +149,54 @@ export default function Alarms() {
         },
     })
 
+    const bulkDeleteMutation = useMutation({
+        mutationFn: bulkDeleteAlarms,
+        onSuccess: (data) => {
+            notifications.show({
+                title: 'Success',
+                message: data.message || 'Selected adjustments deleted',
+                color: 'green',
+                icon: <IconCheck size={16} />,
+            })
+            queryClient.invalidateQueries({ queryKey: ['alarms'] })
+            setSelectedRecords([])
+            setSelectAllPages(false)
+        },
+        onError: (error: Error) => {
+            notifications.show({
+                title: 'Error',
+                message: error.message,
+                color: 'red',
+                icon: <IconX size={16} />,
+            })
+        },
+    })
+
+    const bulkUpdateMutation = useMutation({
+        mutationFn: ({ ids, data }: { ids: number[]; data: Partial<AlarmAdjustment> }) =>
+            bulkUpdateAlarms(ids, data),
+        onSuccess: (data) => {
+            notifications.show({
+                title: 'Success',
+                message: data.message || 'Selected adjustments updated',
+                color: 'green',
+                icon: <IconCheck size={16} />,
+            })
+            queryClient.invalidateQueries({ queryKey: ['alarms'] })
+            closeBulkEdit()
+            setSelectedRecords([])
+            setSelectAllPages(false)
+        },
+        onError: (error: Error) => {
+            notifications.show({
+                title: 'Error',
+                message: error.message,
+                color: 'red',
+                icon: <IconX size={16} />,
+            })
+        },
+    })
+
     const resetForm = () => {
         setFormData({
             id: 0,
@@ -195,6 +257,63 @@ export default function Alarms() {
         }
     }
 
+    const handleBulkDelete = async () => {
+        if (!window.confirm(`Are you sure you want to delete ${selectAllPages ? alarmsData?.total : selectedRecords.length} adjustments?`)) {
+            return
+        }
+
+        let ids: number[] = []
+        if (selectAllPages) {
+            ids = await getAlarmIds({
+                alarm_code: filters.alarm_code || undefined,
+                station_nr: filters.station_nr || undefined,
+            })
+        } else {
+            ids = selectedRecords.map(r => r.id)
+        }
+
+        bulkDeleteMutation.mutate(ids)
+    }
+
+    const handleBulkSubmit = async () => {
+        const data: Partial<AlarmAdjustment> = {}
+        if (bulkFormData.updateTimeOn) data.time_on = bulkFormData.time_on
+        if (bulkFormData.updateTimeOff) data.time_off = bulkFormData.time_off
+        if (bulkFormData.updateNotes) data.notes = bulkFormData.notes
+
+        if (Object.keys(data).length === 0) {
+            notifications.show({
+                title: 'Validation Error',
+                message: 'No fields selected for update',
+                color: 'yellow',
+            })
+            return
+        }
+
+        let ids: number[] = []
+        if (selectAllPages) {
+            ids = await getAlarmIds({
+                alarm_code: filters.alarm_code || undefined,
+                station_nr: filters.station_nr || undefined,
+            })
+        } else {
+            ids = selectedRecords.map(r => r.id)
+        }
+
+        bulkUpdateMutation.mutate({ ids, data })
+    }
+
+    const toggleSelectAllPages = () => {
+        if (selectAllPages) {
+            setSelectAllPages(false)
+            setSelectedRecords([])
+        } else {
+            setSelectAllPages(true)
+            // When selecting all pages, we visually select all on current page too
+            setSelectedRecords(adjustments)
+        }
+    }
+
     const adjustments = alarmsData?.adjustments || []
 
     return (
@@ -210,6 +329,54 @@ export default function Alarms() {
                         Add Adjustment
                     </Button>
                 </Group>
+
+                {/* Bulk Actions Banner */}
+                {selectedRecords.length > 0 && (
+                    <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-blue-light)">
+                        <Group justify="space-between">
+                            <Group>
+                                <Checkbox
+                                    checked={true}
+                                    indeterminate={!selectAllPages && adjustments.length < (alarmsData?.total || 0) && selectedRecords.length < (alarmsData?.total || 0)}
+                                    onChange={() => {
+                                        setSelectedRecords([])
+                                        setSelectAllPages(false)
+                                    }}
+                                />
+                                <Text size="sm" fw={500}>
+                                    {selectAllPages
+                                        ? `All ${alarmsData?.total} adjustments are selected.`
+                                        : `${selectedRecords.length} selected.`}
+                                </Text>
+                                {!selectAllPages && (alarmsData?.total || 0) > adjustments.length && selectedRecords.length === adjustments.length && (
+                                    <Button variant="subtle" size="compact-sm" onClick={toggleSelectAllPages}>
+                                        Select all {alarmsData?.total} adjustments across all pages
+                                    </Button>
+                                )}
+                            </Group>
+                            <Group>
+                                <Button
+                                    variant="white"
+                                    size="xs"
+                                    leftSection={<IconEdit size={14} />}
+                                    onClick={openBulkEdit}
+                                >
+                                    Bulk Edit
+                                </Button>
+                                <Button
+                                    variant="white"
+                                    color="red"
+                                    size="xs"
+                                    leftSection={<IconTrash size={14} />}
+                                    onClick={handleBulkDelete}
+                                    loading={bulkDeleteMutation.isPending}
+                                >
+                                    Delete Selected
+                                </Button>
+                            </Group>
+                        </Group>
+                    </Card>
+                )}
 
                 {/* Alarms Table */}
                 <Card shadow="sm" padding={0} radius="md" withBorder>
@@ -236,7 +403,12 @@ export default function Alarms() {
                                         size="xs"
                                         placeholder="Filter..."
                                         value={filters.alarm_code}
-                                        onChange={(e) => setFilters({ ...filters, alarm_code: e.target.value })}
+                                        onChange={(e) => {
+                                            setFilters({ ...filters, alarm_code: e.target.value })
+                                            setPage(1)
+                                            setSelectedRecords([])
+                                            setSelectAllPages(false)
+                                        }}
                                     />
                                 ),
                                 filtering: filters.alarm_code !== '',
@@ -250,7 +422,12 @@ export default function Alarms() {
                                         size="xs"
                                         placeholder="Filter..."
                                         value={filters.station_nr}
-                                        onChange={(e) => setFilters({ ...filters, station_nr: e.target.value })}
+                                        onChange={(e) => {
+                                            setFilters({ ...filters, station_nr: e.target.value })
+                                            setPage(1)
+                                            setSelectedRecords([])
+                                            setSelectAllPages(false)
+                                        }}
                                     />
                                 ),
                                 filtering: filters.station_nr !== '',
@@ -313,6 +490,14 @@ export default function Alarms() {
                         onPageChange={setPage}
                         sortStatus={sortStatus}
                         onSortStatusChange={setSortStatus as any}
+                        selectedRecords={selectedRecords}
+                        onSelectedRecordsChange={(records) => {
+                            setSelectedRecords(records)
+                            // If user manually deselects something, we turn off "select all pages" mode
+                            if (selectAllPages && records.length < adjustments.length) {
+                                setSelectAllPages(false)
+                            }
+                        }}
                     />
                 </Card>
             </Stack>
@@ -379,6 +564,81 @@ export default function Alarms() {
                             loading={addMutation.isPending || updateMutation.isPending}
                         >
                             {editingAlarm ? 'Update' : 'Add'}
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            {/* Bulk Edit Modal */}
+            <Modal
+                opened={bulkEditOpened}
+                onClose={closeBulkEdit}
+                title={`Bulk Edit (${selectAllPages ? alarmsData?.total : selectedRecords.length} items)`}
+                size="md"
+            >
+                <Stack gap="md">
+                    <Text size="sm" c="dimmed">
+                        Select fields to update. Only selected fields will be applied to all chosen adjustments.
+                    </Text>
+
+                    <Group align="flex-start">
+                        <Checkbox
+                            mt={8}
+                            checked={bulkFormData.updateTimeOn}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, updateTimeOn: e.currentTarget.checked })}
+                        />
+                        <TextInput
+                            style={{ flex: 1 }}
+                            label="Time On"
+                            placeholder="YYYY-MM-DD HH:MM:SS"
+                            value={bulkFormData.time_on}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, time_on: e.target.value })}
+                            disabled={!bulkFormData.updateTimeOn}
+                            description="Leave empty to clear"
+                        />
+                    </Group>
+                    <Group align="flex-start">
+                        <Checkbox
+                            mt={8}
+                            checked={bulkFormData.updateTimeOff}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, updateTimeOff: e.currentTarget.checked })}
+                        />
+                        <TextInput
+                            style={{ flex: 1 }}
+                            label="Time Off"
+                            placeholder="YYYY-MM-DD HH:MM:SS"
+                            value={bulkFormData.time_off}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, time_off: e.target.value })}
+                            disabled={!bulkFormData.updateTimeOff}
+                            description="Leave empty to clear"
+                        />
+                    </Group>
+                    <Group align="flex-start">
+                        <Checkbox
+                            mt={8}
+                            checked={bulkFormData.updateNotes}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, updateNotes: e.currentTarget.checked })}
+                        />
+                        <TextInput
+                            style={{ flex: 1 }}
+                            label="Notes"
+                            placeholder="Notes..."
+                            value={bulkFormData.notes}
+                            onChange={(e) => setBulkFormData({ ...bulkFormData, notes: e.target.value })}
+                            disabled={!bulkFormData.updateNotes}
+                            description="Leave empty to clear"
+                        />
+                    </Group>
+
+                    <Group justify="flex-end" mt="md">
+                        <Button variant="light" onClick={closeBulkEdit}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleBulkSubmit}
+                            loading={bulkUpdateMutation.isPending}
+                        >
+                            Update All
                         </Button>
                     </Group>
                 </Stack>

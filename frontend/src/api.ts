@@ -100,6 +100,35 @@ export const deleteAlarm = async (id: number) => {
     return response.data
 }
 
+export const getAlarmIds = async (filters: AlarmsFilters = {}): Promise<number[]> => {
+    let url = '/alarms/ids'
+    const params = new URLSearchParams()
+    if (filters.alarm_code) params.append('alarm_code', filters.alarm_code)
+    if (filters.station_nr) params.append('station_nr', filters.station_nr)
+    // Add timestamp to prevent caching issues with proxy
+    params.append('_t', Date.now().toString())
+    if (params.toString()) url += `?${params.toString()}`
+
+    const response = await api.get(url)
+    return response.data
+}
+
+export const bulkDeleteAlarms = async (ids: number[]) => {
+    const response = await api.post('/alarms/bulk/delete', { ids })
+    return response.data
+}
+
+export const bulkUpdateAlarms = async (ids: number[], data: Partial<AlarmAdjustment>) => {
+    // Only send updatable fields. Filter out undefined values.
+    const updateData: Record<string, string | undefined> = {}
+    if (data.time_on !== undefined) updateData.time_on = data.time_on
+    if (data.time_off !== undefined) updateData.time_off = data.time_off
+    if (data.notes !== undefined) updateData.notes = data.notes
+
+    const response = await api.put('/alarms/bulk/update', { ids, data: updateData })
+    return response.data
+}
+
 export const getLogs = async (lines: number = 50): Promise<{ logs: string[], total_lines: number }> => {
     const response = await api.get(`/logs?lines=${lines}`)
     return response.data

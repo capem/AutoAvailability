@@ -50,6 +50,15 @@ class AlarmUpdateRequest(BaseModel):
     notes: Optional[str] = None
 
 
+class BulkDeleteRequest(BaseModel):
+    ids: List[int]
+
+
+class BulkUpdateRequest(BaseModel):
+    ids: List[int]
+    data: AlarmUpdateRequest
+
+
 class ProcessingStatus(BaseModel):
     """Model for processing status response."""
     status: str
@@ -299,6 +308,25 @@ async def list_alarms(
     }
 
 
+@router.get("/alarms/ids")
+async def list_alarm_ids(
+    alarm_code: Optional[int] = None,
+    station_nr: Optional[int] = None
+):
+    """Get all alarm IDs matching the filters."""
+    data = adjust_alarms.load_adjustments()
+    all_adjustments = data.get("adjustments", [])
+    
+    # Filtering
+    if alarm_code is not None:
+        all_adjustments = [a for a in all_adjustments if a.get("alarm_code") == alarm_code]
+    
+    if station_nr is not None:
+        all_adjustments = [a for a in all_adjustments if a.get("station_nr") == station_nr]
+    
+    return [a.get("id") for a in all_adjustments if a.get("id") is not None]
+
+
 @router.post("/alarms")
 async def add_alarm(adjustment: AlarmAdjustment):
     """Add a new alarm adjustment."""
@@ -320,6 +348,34 @@ async def add_alarm(adjustment: AlarmAdjustment):
         return {"message": "Adjustment added successfully", "id": adjustment.id}
     else:
         raise HTTPException(status_code=500, detail="Failed to add adjustment")
+
+
+@router.post("/alarms/bulk/delete")
+async def bulk_delete_alarms(request: BulkDeleteRequest):
+    """Delete multiple alarm adjustments."""
+    success = adjust_alarms.remove_adjustments_batch(request.ids)
+    if success:
+        return {"message": f"Successfully deleted {len(request.ids)} adjustments"}
+    else:
+        raise HTTPException(status_code=404, detail="No adjustments found to delete")
+
+
+@router.put("/alarms/bulk/update")
+async def bulk_update_alarms(request: BulkUpdateRequest):
+    """Update multiple alarm adjustments."""
+    logger.info(f"Bulk update request: ids={request.ids}, data={request.data}")
+    
+    # Convert Pydantic model to dict, excluding None values
+    update_data = {k: v for k, v in request.data.dict().items() if v is not None}
+    
+    if not update_data:
+         raise HTTPException(status_code=400, detail="No update data provided")
+
+    success = adjust_alarms.update_adjustments_batch(request.ids, update_data)
+    if success:
+        return {"message": f"Successfully updated {len(request.ids)} adjustments"}
+    else:
+         raise HTTPException(status_code=404, detail="No adjustments found to update")
 
 
 @router.put("/alarms/{alarm_id}")

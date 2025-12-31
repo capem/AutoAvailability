@@ -252,6 +252,56 @@ def remove_adjustment(args):
     return False
 
 
+def remove_adjustments_batch(ids: list[int]):
+    """Remove multiple manual adjustments."""
+    adjustments = load_adjustments()
+    ids_set = set(ids)
+
+    initial_count = len(adjustments["adjustments"])
+    adjustments["adjustments"] = [
+        adj for adj in adjustments["adjustments"] if adj["id"] not in ids_set
+    ]
+
+    if len(adjustments["adjustments"]) == initial_count:
+        return False
+
+    if save_adjustments(adjustments):
+        logger.info(f"Removed {initial_count - len(adjustments['adjustments'])} adjustments")
+        return True
+    return False
+
+
+def update_adjustments_batch(ids: list[int], data: dict):
+    """Update multiple manual adjustments with the same data."""
+    adjustments = load_adjustments()
+    ids_set = set(ids)
+    updates_count = 0
+
+    for i, adj in enumerate(adjustments["adjustments"]):
+        if adj["id"] in ids_set:
+            updates_count += 1
+            
+            # Update fields if provided
+            if "time_on" in data:
+                adjustments["adjustments"][i]["time_on"] = data["time_on"]
+            
+            if "time_off" in data:
+                adjustments["adjustments"][i]["time_off"] = data["time_off"]
+                
+            if "notes" in data:
+                adjustments["adjustments"][i]["notes"] = data["notes"]
+            
+            adjustments["adjustments"][i]["last_updated"] = datetime.now().isoformat()
+
+    if updates_count == 0:
+        return False
+
+    if save_adjustments(adjustments):
+        logger.info(f"Updated {updates_count} adjustments")
+        return True
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Manually adjust alarm time_on and time_off values")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")

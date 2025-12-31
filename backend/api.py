@@ -30,7 +30,7 @@ router = APIRouter()
 class ProcessRequest(BaseModel):
     """Request model for data processing."""
     dates: List[str] = Field(..., description="List of dates in YYYY-MM-DD format")
-    update_mode: str = Field(default="append", description="Update mode: append, check, force-overwrite, process-existing")
+    update_mode: str = Field(default="append", description="Update mode: append, check, force-overwrite, process-existing, process-existing-except-alarms")
 
 
 class AlarmAdjustment(BaseModel):
@@ -176,7 +176,7 @@ async def process_dates(request: ProcessRequest):
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
     
     # Validate update mode
-    valid_modes = ["append", "check", "force-overwrite", "process-existing"]
+    valid_modes = ["append", "check", "force-overwrite", "process-existing", "process-existing-except-alarms"]
     if request.update_mode not in valid_modes:
         raise HTTPException(status_code=400, detail=f"Invalid update mode. Must be one of: {valid_modes}")
     

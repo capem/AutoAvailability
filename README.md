@@ -4,12 +4,23 @@ A modern web application for processing, analyzing, and reporting wind farm avai
 
 ## 🚀 Features
 
--   **Interactive Dashboard**: Select dates, choose update modes, and trigger data processing tasks.
--   **Real-time Status**: Monitor processing progress with live step-by-step updates.
--   **Process Control**: Ability to abort/cancel running processing tasks safely.
--   **Alarm Management**: View, add, edit, and delete manual alarm adjustments via a rich UI.
--   **System Health**: Real-time status checks for database, email, and file system connections.
--   **Log Viewer**: Live application logs directly in the browser.
+-   **Interactive Dashboard**: Select dates, choose advanced update modes, and trigger data processing tasks.
+-   **Data Processing Modes**: Multiple strategies for data handling, including incremental updates and refreshing specific data types like alarms.
+-   **Real-time Status**: Monitor processing progress with live step-by-step updates and progress tracking.
+-   **Process Control**: Ability to abort/cancel running processing tasks safely through the UI.
+-   **Granular Alarm Management**: Advanced UI for managing manual alarm adjustments with filtering, sorting, and **Bulk Actions** (Bulk Edit/Delete).
+-   **System Health & Integrity**: Real-time status checks and integrated data completeness monitoring during export.
+-   **Log Viewer**: Preview and download application logs directly in the browser.
+
+## 📊 Data Processing Modes
+
+The system provides several strategies for handling data during the export process:
+
+-   **Append (Default)**: Reconciles changes from the database while preserving records that may have been manually removed or adjusted in the local files.
+-   **Check**: Performs a state check (count and checksum) between the database and local metadata to report changes without performing an export.
+-   **Force Overwrite**: Performs a fresh export from the database, completely replacing existing local files.
+-   **Process Existing**: Skips the database export entirely and runs calculations using the data already available in the local files.
+-   **Process Existing except Alarms**: A hybrid mode that refreshes only the alarm data from the database while using existing local files for all other data types (Met, Turbine, etc.).
 
 ## 🛠️ Technology Stack
 

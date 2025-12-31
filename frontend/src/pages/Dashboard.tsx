@@ -38,6 +38,7 @@ const updateModes = [
     { value: 'check', label: 'Check - Report changes without modifying' },
     { value: 'force-overwrite', label: 'Force Overwrite - Export fresh data' },
     { value: 'process-existing', label: 'Process Existing - Skip DB, use existing files' },
+    { value: 'process-existing-except-alarms', label: 'Process Existing except Alarms - Update alarms only' },
 ]
 
 export default function Dashboard() {

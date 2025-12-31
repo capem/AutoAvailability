@@ -956,6 +956,16 @@ class DBExporter:
     def export_table_data(self, table_name, period, output_path, update_mode="append"):
         """Exports data for a specific table and period."""
         try:
+            # Handle special mixed mode
+            if update_mode == "process-existing-except-alarms":
+                if table_name == "tblAlarmLog":
+                    # Update alarms (using append to be safe)
+                    update_mode = "append"
+                    logger.info(f"Mode 'process-existing-except-alarms': Treating {table_name} as 'append'")
+                else:
+                    # Process existing for others so we don't fetch from DB
+                    update_mode = "process-existing"
+
             # Handle process-existing mode: skip DB/export, process existing file
             if update_mode == "process-existing":
                 if os.path.exists(output_path):
@@ -1153,6 +1163,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
                            'force-overwrite': Export fresh data from DB, overwriting existing CSV.
                            'check': Compare DB state with metadata, report changes, no export.
                            'process-existing': Skip DB/export, process existing files only.
+                           'process-existing-except-alarms': Updates alarms, uses existing for others.
 
     Returns:
         dict: A dictionary with file types as keys and boolean success status as values.
@@ -1379,9 +1390,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update-mode",
-        choices=["check", "append", "force-overwrite", "process-existing"],
+        choices=["check", "append", "force-overwrite", "process-existing", "process-existing-except-alarms"],
         default="append",
-        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only).",
+        help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only), 'process-existing-except-alarms' (updates alarms, uses existing for others).",
     )
 
     args = parser.parse_args()

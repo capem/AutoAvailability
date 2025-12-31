@@ -350,30 +350,31 @@ def handle_alarm_code_1005_overlap(alarm_df):
 
 # ============================= DATA PROCESSING UTILITY FUNCTIONS =============================
 
-def expand_to_full_time_range(df, time_range):
+def expand_to_full_time_range(df, time_range, station_ids):
     """
-    Expand a DataFrame to include all timestamps in the specified time range.
-
-    This function:
-    1. Creates a new DataFrame with the full time range as index
-    2. Joins the original DataFrame to include all timestamps
-    3. Fills missing values with NaN
+    Expand a DataFrame to include all timestamps in the specified time range for all specified stations.
+    
+    This function creates a cartesian product of stations and time (skeleton) and merges the 
+    original data onto it. This ensures that every station-timestamp combination exists in 
+    the result, filling missing data with NaN.
 
     Args:
-        df: DataFrame to expand
-        time_range: Full range of timestamps to include
+        df: DataFrame to expand. Must contain "StationNr" and "TimeStamp" columns.
+        time_range: Full range of timestamps to include.
+        station_ids: Array/list of station IDs to include.
 
     Returns:
-        DataFrame expanded to include all timestamps in the range
+        DataFrame expanded to include all timestamps for all stations.
     """
-    # Create a new DataFrame with the full time range as index
-    expanded_df = pd.DataFrame(index=time_range)
-
-    # Set the TimeStamp column as index in the original DataFrame
-    df = df.set_index("TimeStamp")
-
-    # Join the original DataFrame with the expanded one
-    return expanded_df.join(df, how="left")
+    # Create the full skeleton of (StationNr, TimeStamp)
+    # Note: We assume the station column is named 'StationNr' to match the alarm data
+    full_idx = pd.MultiIndex.from_product([station_ids, time_range], names=["StationNr", "TimeStamp"])
+    
+    # Create skeleton DataFrame and reset index to get columns
+    skeleton = pd.DataFrame(index=full_idx).reset_index()
+    
+    # Merge original data onto the skeleton (Left Join)
+    return pd.merge(skeleton, df, on=["StationNr", "TimeStamp"], how="left")
 
 
 def calculate_correction_factor(turbine_count, total_turbines=131, availability_loss=0.08):
@@ -985,18 +986,23 @@ def full_calculation(period):
     )
 
     # Expand to include all timestamps in the full time range
-    aggregated_alarms = (
-        aggregated_alarms.groupby("StationNr", group_keys=True)
-        .apply(lambda df: expand_to_full_time_range(df, full_time_range), include_groups=False)
-        .reset_index()
-        .rename(
-            columns={
-                "level_1": "TimeStamp",
-                "StationNr": "StationId",
-                "Period Tarec(s)": "Period 0(s)",
-                "Period Siemens(s)": "Period 1(s)",
-            }
-        )
+    # Ensure all stations are represented, even if they have no alarms/data
+    # We use the fixed range of all stations in the park to capture every turbine
+    # This range matches the filter in load_alarm_data (2307405 to 2307535)
+    all_stations = np.arange(2307405, 2307536)
+
+    # Use the helper function to expand to the full grid (Stations x Time)
+    # This ensures even missing stations are present in the final DataFrame
+    aggregated_alarms = expand_to_full_time_range(aggregated_alarms, full_time_range, station_ids=all_stations)
+    
+    # Rename columns to match expected output
+    aggregated_alarms.rename(
+        columns={
+            "StationNr": "StationId",
+            "Period Tarec(s)": "Period 0(s)",
+            "Period Siemens(s)": "Period 1(s)",
+        },
+        inplace=True
     )
 
     # Convert timedeltas to seconds and fill NAs with 0

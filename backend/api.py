@@ -9,8 +9,13 @@ import multiprocessing
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
+import pathlib
+import mimetypes
+import zipfile
+import io
 
 # Import src modules - adjust path since we're in backend/
 import sys
@@ -23,6 +28,11 @@ from src import logger_config
 logger = logger_config.get_logger(__name__)
 
 router = APIRouter()
+
+# --- Configuration for File Manager ---
+# Resolves to absolute path of 'monthly_data' relative to the root of the repo
+# backend/api.py -> backend/ -> root -> monthly_data
+BASE_DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "monthly_data"
 
 
 # --- Pydantic Models ---
@@ -502,3 +512,224 @@ async def system_status():
         "components": status_items,
         "processing": dict(status_dict)
     }
+
+
+# --- File Manager Endpoints ---
+
+@router.get("/fs/list")
+async def list_files(path: str = ""):
+    """
+    List files and directories in the given path relative to BASE_DATA_DIR.
+    Secured against path traversal.
+    """
+    try:
+        # Securely resolve the target path
+        target_path = (BASE_DATA_DIR / path).resolve()
+        
+        # Verify that the target path is inside BASE_DATA_DIR
+        if not str(target_path).startswith(str(BASE_DATA_DIR)):
+             raise HTTPException(status_code=403, detail="Access denied: Path outside allowed directory")
+        
+        if not target_path.exists():
+            raise HTTPException(status_code=404, detail="Path not found")
+            
+        if not target_path.is_dir():
+             raise HTTPException(status_code=400, detail="Not a directory")
+
+        items = []
+        # Use os.scandir for performance
+        with os.scandir(target_path) as entries:
+            for entry in entries:
+                # Exclude metadata/json files
+                if entry.name.endswith('.json') or entry.name.endswith('.meta'):
+                    continue
+
+                # Basic info
+                stat = entry.stat()
+                item_type = "directory" if entry.is_dir() else "file"
+                
+                # Determine mime type for files
+                mime_type = None
+                if item_type == "file":
+                     mime_type, _ = mimetypes.guess_type(entry.name)
+                
+                items.append({
+                    "name": entry.name,
+                    "type": item_type,
+                    "size": stat.st_size if item_type == "file" else 0, # Folder size calculation is expensive, skip
+                    "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "mime_type": mime_type,
+                    "path": str(pathlib.Path(path) / entry.name).replace("\\", "/") # Relative path for frontend
+                })
+        
+        # Sort items: Directories first, then alphabetical
+        items.sort(key=lambda x: (0 if x["type"] == "directory" else 1, x["name"].lower()))
+        
+        return items
+
+    except PermissionError:
+         raise HTTPException(status_code=403, detail="Permission denied")
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Error listing files at {path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/fs/download")
+async def download_file(path: str):
+    """
+    Download a file from the given path relative to BASE_DATA_DIR.
+    Secured against path traversal.
+    """
+    try:
+        # Securely resolve the target path
+        target_path = (BASE_DATA_DIR / path).resolve()
+        
+        # Verify that the target path is inside BASE_DATA_DIR
+        if not str(target_path).startswith(str(BASE_DATA_DIR)):
+             raise HTTPException(status_code=403, detail="Access denied: Path outside allowed directory")
+             
+        if not target_path.exists() or not target_path.is_file():
+             raise HTTPException(status_code=404, detail="File not found")
+             
+        # Return file as attachment
+        return FileResponse(
+            path=target_path,
+            filename=target_path.name,
+            media_type='application/octet-stream' 
+        )
+
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Error downloading file at {path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class BulkDownloadRequest(BaseModel):
+    paths: List[str]
+
+
+@router.post("/fs/download-zip")
+async def download_zip(request: BulkDownloadRequest):
+    """
+    Download multiple files as a ZIP archive.
+    """
+    try:
+        # Create in-memory zip
+        zip_buffer = io.BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for path in request.paths:
+                # Securely resolve path
+                target_path = (BASE_DATA_DIR / path).resolve()
+                
+                # Check security
+                if not str(target_path).startswith(str(BASE_DATA_DIR)):
+                    logger.warning(f"Skipping security violation path: {path}")
+                    continue
+                    
+                if target_path.exists() and target_path.is_file():
+                    # Add to zip with a clean arcname (relative to BASE_DATA_DIR usually, or just filename)
+                    # Here we use the filename to keep it flat or relative structure if needed
+                    # Let's preserve the structure relative to the requested path from the request
+                    
+                    # Calculate relative path for archive name
+                    try:
+                        arcname = target_path.relative_to(BASE_DATA_DIR)
+                    except ValueError:
+                         arcname = target_path.name
+
+                    zip_file.write(target_path, arcname=str(arcname))
+        
+        # Rewind buffer
+        zip_buffer.seek(0)
+        
+        # Generator for streaming
+        def iterfile():
+            yield from zip_buffer
+            
+        return StreamingResponse(
+            iterfile(),
+            media_type="application/zip",
+            headers={"Content-Disposition": "attachment; filename=files.zip"}
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating zip: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/fs/search")
+async def search_files(
+    query: Optional[str] = None,
+    months: Optional[List[str]] = Query(None),
+    types: Optional[List[str]] = Query(None)
+):
+    """
+    Recursively search for files in BASE_DATA_DIR matching filters.
+    """
+    try:
+        items = []
+        
+        # We need to walk the entire directory structure
+        # pathlib.rglob('*') is useful here
+        for path in BASE_DATA_DIR.rglob('*'):
+            if not path.is_file():
+                continue
+            
+            # Exclude metadata/json files
+            if path.name.endswith('.json') or path.name.endswith('.meta'):
+                continue
+                
+            # Apply filters
+            
+            # 1. Type Filter (Folder Name)
+            # If types matches ANY selected type
+            if types:
+                rel_path = path.relative_to(BASE_DATA_DIR)
+                # Check if any parent folder matches any of the selected types
+                # Using set intersection for efficiency
+                path_parts = set(p.lower() for p in rel_path.parts[:-1])
+                selected_types = set(t.lower() for t in types)
+                if not path_parts.intersection(selected_types):
+                    continue
+            
+            # 2. Month Filter (YYYY-MM in filename)
+            # If months matches ANY selected month
+            if months:
+                # Check if any of the selected month strings are in the filename
+                if not any(m in path.name for m in months):
+                    continue
+            
+            # 3. Query Filter (Filename substring)
+            if query:
+                if query.lower() not in path.name.lower():
+                    continue
+            
+            # If we get here, it's a match
+            stat = path.stat()
+            mime_type, _ = mimetypes.guess_type(path.name)
+            
+            # Calculate relative path string for frontend
+            rel_path_str = str(path.relative_to(BASE_DATA_DIR)).replace("\\", "/")
+            
+            items.append({
+                "name": path.name,
+                "type": "file", # Search only returns files for now allows flat list
+                "size": stat.st_size,
+                "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "mime_type": mime_type,
+                "path": rel_path_str
+            })
+            
+        # Sort by date modified desc (newest first usually most relevant)
+        items.sort(key=lambda x: x["mtime"], reverse=True)
+        
+        return items
+
+    except Exception as e:
+        logger.error(f"Error searching files: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

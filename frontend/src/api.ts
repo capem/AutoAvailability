@@ -50,6 +50,15 @@ export interface AlarmsResponse {
     total_pages: number
 }
 
+export interface FileItem {
+    name: string
+    type: 'directory' | 'file'
+    size: number
+    mtime: string
+    mime_type: string | null
+    path: string
+}
+
 // API Functions
 export const processData = async (request: ProcessRequest) => {
     const response = await api.post('/process', request)
@@ -136,5 +145,48 @@ export const getLogs = async (lines: number = 50): Promise<{ logs: string[], tot
 
 export const getSystemStatus = async (): Promise<SystemStatus> => {
     const response = await api.get('/status')
+    return response.data
+}
+
+export const listFiles = async (path: string = ''): Promise<FileItem[]> => {
+    const response = await api.get('/fs/list', { params: { path } })
+    return response.data
+}
+
+export const getDownloadUrl = (path: string) => {
+    // Construct absolute URL for direct browser navigation
+    // Note: In development with Vite proxy, this works. In production, ensure paths match.
+    return `${API_BASE_URL}/fs/download?path=${encodeURIComponent(path)}`
+}
+
+export const downloadZip = async (paths: string[]) => {
+    const response = await api.post('/fs/download-zip', { paths }, {
+        responseType: 'blob', // Important for binary data
+    })
+
+    // Create blob link to download
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'files.zip')
+    document.body.appendChild(link)
+    link.click()
+    link.parentNode?.removeChild(link)
+    window.URL.revokeObjectURL(url)
+}
+
+export interface SearchParams {
+    query?: string
+    months?: string[]
+    types?: string[]
+}
+
+export const searchFiles = async (params: SearchParams): Promise<FileItem[]> => {
+    const response = await api.get('/fs/search', {
+        params,
+        paramsSerializer: {
+            indexes: null
+        }
+    })
     return response.data
 }

@@ -11,6 +11,7 @@ A modern web application for processing, analyzing, and reporting wind farm avai
 -   **Granular Alarm Management**: Advanced UI for managing manual alarm adjustments with filtering, sorting, and **Bulk Actions** (Bulk Edit/Delete).
 -   **System Health & Integrity**: Real-time status checks and integrated data completeness monitoring during export.
 -   **Log Viewer**: Preview and download application logs directly in the browser.
+-   **File Manager**: Built-in file explorer to browse processed results. Features **Multi-Select Filtering** (by Category and Period) and **Bulk Zip Downloads** for efficient data retrieval.
 
 ## 📊 Data Processing Modes
 

@@ -7,6 +7,7 @@ import {
     IconSettings,
     IconSun,
     IconMoon,
+    IconFolder,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { getProcessingStatus } from '../api'
@@ -14,6 +15,7 @@ import { getProcessingStatus } from '../api'
 const navItems = [
     { label: 'Dashboard', icon: IconDashboard, path: '/' },
     { label: 'Alarm Adjustments', icon: IconBell, path: '/alarms' },
+    { label: 'Files', icon: IconFolder, path: '/files' },
     { label: 'Logs', icon: IconFileText, path: '/logs' },
     { label: 'Settings', icon: IconSettings, path: '/settings' },
 ]

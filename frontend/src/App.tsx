@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Alarms from './pages/Alarms'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
+import FileManager from './pages/FileManager'
 
 import './App.css'
 
@@ -33,6 +34,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/alarms" element={<Alarms />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/files" element={<FileManager />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </AppShell.Main>

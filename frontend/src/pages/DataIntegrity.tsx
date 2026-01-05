@@ -150,7 +150,7 @@ export default function DataIntegrity() {
                                 </Stack>
                             </Card>
                         </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+                        <Grid.Col span={{ base: 12, sm: 4, md: 2 }}>
                             <Card withBorder padding="lg">
                                 <Stack gap="xs">
                                     <Text size="xs" tt="uppercase" fw={700} c="dimmed">Station Gaps</Text>
@@ -160,7 +160,27 @@ export default function DataIntegrity() {
                                 </Stack>
                             </Card>
                         </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+                        <Grid.Col span={{ base: 12, sm: 4, md: 2 }}>
+                            <Card withBorder padding="lg">
+                                <Stack gap="xs">
+                                    <Text size="xs" tt="uppercase" fw={700} c="dimmed">Empty Rows</Text>
+                                    <Text size="xl" fw={700} c={(report.summary.empty_rows_count ?? 0) > 0 ? "yellow" : "dimmed"}>
+                                        {report.summary.empty_rows_count ?? 0}
+                                    </Text>
+                                </Stack>
+                            </Card>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, sm: 4, md: 2 }}>
+                            <Card withBorder padding="lg">
+                                <Stack gap="xs">
+                                    <Text size="xs" tt="uppercase" fw={700} c="dimmed">Sensor Gaps</Text>
+                                    <Text size="xl" fw={700} c={(report.summary.sensor_gaps_count ?? 0) > 0 ? "cyan" : "dimmed"}>
+                                        {report.summary.sensor_gaps_count ?? 0}
+                                    </Text>
+                                </Stack>
+                            </Card>
+                        </Grid.Col>
+                        <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
                             <Card withBorder padding="lg">
                                 <Stack gap="xs">
                                     <Text size="xs" tt="uppercase" fw={700} c="dimmed">Stuck Values</Text>
@@ -170,7 +190,7 @@ export default function DataIntegrity() {
                                 </Stack>
                             </Card>
                         </Grid.Col>
-                        <Grid.Col span={{ base: 12, sm: 6, md: 3 }}>
+                        <Grid.Col span={{ base: 12, sm: 6, md: 2 }}>
                             <Card withBorder padding="lg">
                                 <Stack gap="xs">
                                     <Text size="xs" tt="uppercase" fw={700} c="dimmed">Out of Range</Text>
@@ -215,6 +235,8 @@ export default function DataIntegrity() {
                                                                 if (issue.type === 'system_completeness' && issue.sensor === 'Global Connectivity') return 0 // Site Blackout
                                                                 if (issue.type === 'system_completeness') return 1 // Sensor Outage
                                                                 if (issue.type === 'completeness') return 2 // Station Gap
+                                                                if (issue.type === 'empty_row') return 2.5 // Empty Row
+                                                                if (issue.type === 'sensor_gap') return 2.8 // Sensor Gap
                                                                 if (issue.type === 'stuck_value') return 3 // Stuck
                                                                 if (issue.type === 'out_of_range') return 4 // Range
                                                                 return 99
@@ -224,6 +246,8 @@ export default function DataIntegrity() {
                                                             const isBlackout = issue.type === 'system_completeness' && issue.sensor === 'Global Connectivity'
                                                             const isSensorOutage = issue.type === 'system_completeness' && !isBlackout
                                                             const isStationGap = issue.type === 'completeness'
+                                                            const isEmptyRow = issue.type === 'empty_row'
+                                                            const isSensorGap = issue.type === 'sensor_gap'
                                                             const isStuck = issue.type === 'stuck_value'
 
                                                             let badgeLabel = 'Unknown'
@@ -236,11 +260,19 @@ export default function DataIntegrity() {
                                                                 badgeVariant = 'filled'
                                                             } else if (isSensorOutage) {
                                                                 badgeLabel = 'SENSOR OUTAGE'
-                                                                badgeColor = 'orange' // Distinct from Red Blackout
+                                                                badgeColor = 'orange'
                                                                 badgeVariant = 'filled'
                                                             } else if (isStationGap) {
                                                                 badgeLabel = 'STATION GAP'
                                                                 badgeColor = 'orange'
+                                                                badgeVariant = 'light'
+                                                            } else if (isEmptyRow) {
+                                                                badgeLabel = 'EMPTY DATA'
+                                                                badgeColor = 'yellow'
+                                                                badgeVariant = 'light'
+                                                            } else if (isSensorGap) {
+                                                                badgeLabel = 'SENSOR GAP'
+                                                                badgeColor = 'cyan'
                                                                 badgeVariant = 'light'
                                                             } else if (isStuck) {
                                                                 badgeLabel = 'STUCK VALUE'

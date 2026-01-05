@@ -44,7 +44,9 @@ def run_validation_scan(target_periods=None, override_end_date=None):
             "stuck_values_count": 0,
             "out_of_range_count": 0,
             "completeness_issues_count": 0,
-            "system_issues_count": 0
+            "system_issues_count": 0,
+            "empty_rows_count": 0,
+            "sensor_gaps_count": 0
         },
         "details": []
     }
@@ -139,6 +141,10 @@ def run_validation_scan(target_periods=None, override_end_date=None):
                         report["summary"]["completeness_issues_count"] += 1
                     elif issue['type'] == 'system_completeness':
                         report["summary"]["system_issues_count"] += 1
+                    elif issue['type'] == 'empty_row':
+                        report["summary"]["empty_rows_count"] += 1
+                    elif issue['type'] == 'sensor_gap':
+                        report["summary"]["sensor_gaps_count"] += 1
                         
                 report["details"].append(file_report)
                 

@@ -223,6 +223,8 @@ export interface ValidationReport {
         out_of_range_count: number
         completeness_issues_count?: number
         system_issues_count?: number
+        empty_rows_count?: number
+        sensor_gaps_count?: number
     }
     details: FileValidationReport[]
 }

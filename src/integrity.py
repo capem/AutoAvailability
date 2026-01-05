@@ -208,6 +208,48 @@ def scan_met_integrity(df, period_start=None, period_end=None):
                     "range_end": period_end.isoformat()
                  })
 
+            # 3. Per-Station Empty Rows (Present but all sensors NaN)
+            # Identify columns to check (mean value of each sensor)
+            present_sensor_cols = [f"{s}_mean" for s, _ in checks if f"{s}_mean" in df.columns]
+            
+            if present_sensor_cols:
+                # Check if ALL checks' mean columns are NaN for a row
+                empty_mask = station_df[present_sensor_cols].isna().all(axis=1)
+                
+                if empty_mask.any():
+                     empty_rows = station_df[empty_mask]
+                     issues.append({
+                        "type": "empty_row",
+                        "station_id": int(station_id),
+                        "sensor": "ALL",
+                        "count": len(empty_rows),
+                        "range_start": empty_rows['TimeStamp'].min().isoformat() if not empty_rows.empty else None,
+                        "range_end": empty_rows['TimeStamp'].max().isoformat() if not empty_rows.empty else None,
+                        "indices": empty_rows.index.tolist()
+                     })
+
+                # 4. Per-Station Sensor Gaps (Row present, specific sensor NaN, not all NaN)
+                # We reuse empty_mask to strictly distinguish from "Empty Row"
+                non_empty_rows = station_df[~empty_mask]
+                
+                if not non_empty_rows.empty:
+                    for col in present_sensor_cols:
+                        sensor_name = col.replace("_mean", "")
+                        # Check where this specific sensor is NaN in otherwise valid rows
+                        gap_mask = non_empty_rows[col].isna()
+                        
+                        if gap_mask.any():
+                            gap_rows = non_empty_rows[gap_mask]
+                            issues.append({
+                                "type": "sensor_gap",
+                                "station_id": int(station_id),
+                                "sensor": sensor_name,
+                                "count": len(gap_rows),
+                                "range_start": gap_rows['TimeStamp'].min().isoformat(),
+                                "range_end": gap_rows['TimeStamp'].max().isoformat(),
+                                "indices": gap_rows.index.tolist()
+                            })
+
     stats_to_check = ["mean", "min", "max"]
 
     for base_col, (v_min, v_max) in checks:

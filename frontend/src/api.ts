@@ -243,3 +243,38 @@ export const getValidationReport = async (): Promise<ValidationReport> => {
     const response = await api.get('/integrity/report')
     return response.data
 }
+
+// Scheduler API
+export interface SchedulerStatus {
+    enabled: boolean
+    day_of_week: string
+    hour: number
+    minute: number
+    next_run: string | null
+    last_run: string | null
+    last_status: 'success' | 'error' | null
+    last_error: string | null
+    is_running: boolean
+}
+
+export interface SchedulerConfigRequest {
+    enabled: boolean
+    day_of_week: string
+    hour: number
+    minute: number
+}
+
+export const getSchedulerStatus = async (): Promise<SchedulerStatus> => {
+    const response = await api.get('/scheduler/status')
+    return response.data
+}
+
+export const configureScheduler = async (config: SchedulerConfigRequest): Promise<SchedulerStatus> => {
+    const response = await api.post('/scheduler/configure', config)
+    return response.data
+}
+
+export const triggerScheduler = async () => {
+    const response = await api.post('/scheduler/trigger')
+    return response.data
+}

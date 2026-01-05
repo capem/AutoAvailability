@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "day_of_week": "mon",
+  "hour": 6,
+  "minute": 0,
+  "last_run": null,
+  "last_status": null,
+  "last_error": null
+}

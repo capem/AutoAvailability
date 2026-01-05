@@ -5,6 +5,7 @@ A modern web application for processing, analyzing, and reporting wind farm avai
 ## 🚀 Features
 
 -   **Interactive Dashboard**: Select dates, choose advanced update modes, and trigger data processing tasks.
+-   **Scheduled Processing**: Automated weekly processing with configurable day/time, failure alerts, and in-app management.
 -   **Data Processing Modes**: Multiple strategies for data handling, including incremental updates and refreshing specific data types like alarms.
 -   **Real-time Status**: Monitor processing progress with live step-by-step updates and progress tracking.
 -   **Process Control**: Ability to abort/cancel running processing tasks safely through the UI.
@@ -23,11 +24,24 @@ The system provides several strategies for handling data during the export proce
 -   **Process Existing**: Skips the database export entirely and runs calculations using the data already available in the local files.
 -   **Process Existing except Alarms**: A hybrid mode that refreshes only the alarm data from the database while using existing local files for all other data types (Met, Turbine, etc.).
 
+## ⏰ Scheduled Processing
+
+The system supports automated weekly processing with the following features:
+
+-   **Configurable Schedule**: Set the day of week and time (default: Monday 6:00 AM)
+-   **In-App Management**: Enable/disable and configure the schedule from the Settings page
+-   **Failure Alerts**: Automatic email notifications when scheduled processing fails
+-   **Manual Trigger**: "Run Now" button to test the scheduled job on demand
+-   **Status Tracking**: View last run status, next scheduled run, and error details
+
+Configuration is persisted to `config/scheduler_config.json` and the scheduler auto-starts when the server launches (if enabled).
+
 ## 🛠️ Technology Stack
 
--   **Backend**: Python 3.13+, FastAPI, Multiprocessing, Pandas, PyODBC
+-   **Backend**: Python 3.13+, FastAPI, APScheduler, Multiprocessing, Pandas, PyODBC
 -   **Frontend**: React 18, TypeScript, Vite, Mantine UI, React Query
 -   **Database**: SQL Server (Source Data), File-based Storage (Processed Results)
+
 
 ## 📋 Prerequisites
 

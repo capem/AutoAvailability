@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src import config
 from src import adjust_alarms
 from src import logger_config
+from src import scheduler as app_scheduler
 
 logger = logger_config.get_logger(__name__)
 
@@ -834,3 +835,41 @@ async def search_files(
         logger.error(f"Error searching files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# --- Scheduler Endpoints ---
+
+class SchedulerConfigRequest(BaseModel):
+    """Request model for scheduler configuration."""
+    enabled: bool
+    day_of_week: str = "mon"
+    hour: int = 6
+    minute: int = 0
+
+
+@router.get("/scheduler/status")
+async def get_scheduler_status():
+    """Get current scheduler status and configuration."""
+    return app_scheduler.get_scheduler_status()
+
+
+@router.post("/scheduler/configure")
+async def configure_scheduler(request: SchedulerConfigRequest):
+    """Configure the scheduler with new settings."""
+    try:
+        return app_scheduler.configure_scheduler(
+            enabled=request.enabled,
+            day_of_week=request.day_of_week,
+            hour=request.hour,
+            minute=request.minute,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/scheduler/trigger")
+async def trigger_scheduler():
+    """Manually trigger the scheduled job (for testing)."""
+    result = app_scheduler.trigger_now()
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result

@@ -16,12 +16,15 @@ from .api import router
 
 from contextlib import asynccontextmanager
 from .api import router, cleanup_resources
+from src import scheduler as app_scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    app_scheduler.init_scheduler()
     yield
     # Shutdown
+    app_scheduler.shutdown_scheduler()
     cleanup_resources()
 
 app = FastAPI(

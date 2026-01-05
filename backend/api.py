@@ -132,6 +132,7 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
         from src import data_exporter
         from src import calculation
         from src import hebdo_calc
+        from src import email_send
         
         for date_str in dates:
             target_date = datetime.strptime(date_str, "%Y-%m-%d")
@@ -162,7 +163,30 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
             
             # Step 3: Weekly calculations
             status_dict["step"] = "Generating weekly reports"
-            hebdo_calc.main(period_range, period_start_dt, period_end_dt)
+            df_exploi = hebdo_calc.main(period_range, period_start_dt, period_end_dt)
+            df_Top15 = hebdo_calc.Top15(period_range, period_start_dt, period_end_dt)
+
+            # Step 4: Email reports
+            status_dict["step"] = "Sending email reports"
+            try:
+                title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
+                
+                logger.info("Sending availability report email...")
+                email_send.send_email(
+                    df=df_exploi,
+                    receiver_email=config.EMAIL_CONFIG["receiver_default"],
+                    subject=f"Indisponibilité {title}"
+                )
+                
+                logger.info("Sending Top 15 report email...")
+                email_send.send_email(
+                    df=df_Top15,
+                    receiver_email=config.EMAIL_CONFIG["receiver_default"],
+                    subject=f"Top 15 Total Energy Lost(MWh){title}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send email reports: {e}")
+                # We don't stop the process if email fails, just log it
         
         status_dict["status"] = "completed"
         status_dict["message"] = f"Successfully processed {len(dates)} date(s)"

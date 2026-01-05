@@ -81,7 +81,7 @@ class Config:
             error_msg = (
                 f"Missing required environment variables: {', '.join(missing_vars)}"
             )
-            logger.error(error_msg)
+            logger.error(f"[CONFIG] {error_msg}")
             raise ValueError(error_msg)
 
 

@@ -161,10 +161,10 @@ class ConnectionPool:
             # Create SQLAlchemy engine with pyodbc connection
             connection_url = f"mssql+pyodbc:///?odbc_connect={connection_string}"
             engine = create_engine(connection_url, fast_executemany=True)
-            logger.debug("SQLAlchemy engine created successfully.")
+            logger.debug("[EXPORT] SQLAlchemy engine created successfully.")
             return engine
         except Exception as e:
-            logger.error(f"Failed to create SQLAlchemy engine: {str(e)}")
+            logger.error(f"[EXPORT] Failed to create SQLAlchemy engine: {str(e)}")
             # Still return None to allow fallback to direct pyodbc if needed
             return None
 
@@ -188,15 +188,15 @@ class ConnectionPool:
             # Try to use the engine's connection if available
             if self.engine is not None:
                 conn = self.engine.connect().connection
-                logger.debug("Database connection created from SQLAlchemy engine.")
+                logger.debug("[EXPORT] Database connection created from SQLAlchemy engine.")
                 return conn
             else:
                 # Fallback to direct pyodbc connection
                 conn = pyodbc.connect(connection_string, timeout=10)  # Added timeout
-                logger.debug("Database connection created directly with pyodbc.")
+                logger.debug("[EXPORT] Database connection created directly with pyodbc.")
                 return conn
         except Exception as e:
-            logger.error(f"Failed to create database connection: {str(e)}")
+            logger.error(f"[EXPORT] Failed to create database connection: {str(e)}")
             # Do not raise here, allow pool creation to potentially succeed with fewer connections
             return None  # Indicate failure
 
@@ -208,7 +208,7 @@ class ConnectionPool:
             conn = self.pool.get(block=True, timeout=30)  # Added timeout
             yield conn
         except queue.Empty:
-            logger.error("Timeout waiting for database connection from pool.")
+            logger.error("[EXPORT] Timeout waiting for database connection from pool.")
             raise TimeoutError(
                 "Could not get database connection from pool"
             )  # Raise specific error
@@ -219,12 +219,12 @@ class ConnectionPool:
                     if not conn.closed:
                         self.pool.put(conn)
                     else:
-                        logger.warning("Connection was closed, creating a new one.")
+                        logger.warning("[EXPORT] Connection was closed, creating a new one.")
                         self.pool.put(self._create_connection())
 
                 except pyodbc.Error:
                     # If connection is broken, create a new one
-                    logger.warning("Connection is broken, replacing with a new one")
+                    logger.warning("[EXPORT] Connection is broken, replacing with a new one")
                     try:
                         conn.close()
                     except Exception:
@@ -233,7 +233,7 @@ class ConnectionPool:
                     if new_conn:
                         self.pool.put(new_conn)
                 except Exception as e:
-                    logger.error(f"Error returning connection to pool: {e}")
+                    logger.error(f"[EXPORT] Error returning connection to pool: {e}")
                     # Attempt to create a new connection if putting back failed
                     new_conn = self._create_connection()
                     if new_conn:
@@ -245,11 +245,11 @@ class ConnectionPool:
             try:
                 conn = self.pool.get(block=False)
                 conn.close()
-                logger.debug("Closed connection from pool.")
+                logger.debug("[EXPORT] Closed connection from pool.")
             except queue.Empty:
                 break
             except Exception as e:
-                logger.error(f"Error closing connection: {str(e)}")
+                logger.error(f"[EXPORT] Error closing connection: {str(e)}")
 
 
 # --- DB Exporter Class ---
@@ -269,7 +269,7 @@ class DBExporter:
     def _ensure_alarm_data_loaded(self):
         """Ensure alarm codes and manual adjustments are loaded (lazy loading)"""
         if not self._alarm_data_loaded:
-            logger.info("Loading alarm codes and manual adjustments...")
+            logger.info("[EXPORT] Loading alarm codes and manual adjustments...")
             self._load_error_list()
             self.manual_adjustments = self._load_manual_adjustments()
             self._alarm_data_loaded = True
@@ -279,7 +279,7 @@ class DBExporter:
         try:
             excel_path = config.ALARMS_FILE_PATH
             if not os.path.exists(excel_path):
-                logger.error(f"Error list file not found at: {excel_path}")
+                logger.error(f"[EXPORT] Error list file not found at: {excel_path}")
                 self.alarms_0_1 = pd.Series(dtype=int)
                 return
 
@@ -293,10 +293,10 @@ class DBExporter:
                 )  # Corrected isin([1, 0]) to isin([0, 1])
             ].Alarmcode
             logger.info(
-                f"Loaded {len(self.alarms_0_1)} alarm codes for type 0/1 from {excel_path}"
+                f"[EXPORT] Loaded {len(self.alarms_0_1)} alarm codes for type 0/1 from {excel_path}"
             )
         except Exception as e:
-            logger.error(f"Failed to load or process error list from Excel: {e}")
+            logger.error(f"[EXPORT] Failed to load or process error list from Excel: {e}")
             self.alarms_0_1 = pd.Series(dtype=int)
 
     def _load_manual_adjustments(self):
@@ -304,7 +304,7 @@ class DBExporter:
         try:
             if not os.path.exists(MANUAL_ADJUSTMENTS_FILE):
                 logger.info(
-                    f"Manual adjustments file not found at: {MANUAL_ADJUSTMENTS_FILE}. Creating empty file."
+                    f"[EXPORT] Manual adjustments file not found at: {MANUAL_ADJUSTMENTS_FILE}. Creating empty file."
                 )
                 with open(MANUAL_ADJUSTMENTS_FILE, "w") as f:
                     json.dump({"adjustments": []}, f, indent=4)
@@ -313,11 +313,11 @@ class DBExporter:
             with open(MANUAL_ADJUSTMENTS_FILE, "r") as f:
                 adjustments = json.load(f)
             logger.info(
-                f"Loaded {len(adjustments.get('adjustments', []))} manual adjustments from {MANUAL_ADJUSTMENTS_FILE}"
+                f"[EXPORT] Loaded {len(adjustments.get('adjustments', []))} manual adjustments from {MANUAL_ADJUSTMENTS_FILE}"
             )
             return adjustments
         except Exception as e:
-            logger.error(f"Failed to load or process manual adjustments: {e}")
+            logger.error(f"[EXPORT] Failed to load or process manual adjustments: {e}")
             return {"adjustments": []}
 
     def _ensure_manual_adjustments_loaded(self):
@@ -339,7 +339,7 @@ class DBExporter:
             return metadata.get("db_row_count"), metadata.get("db_checksum_agg")
         except (json.JSONDecodeError, IOError) as e:
             logger.warning(
-                f"Could not read or parse metadata file {metadata_path}: {e}"
+                f"[EXPORT] Could not read or parse metadata file {metadata_path}: {e}"
             )
             return None, None
 
@@ -354,9 +354,9 @@ class DBExporter:
             os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=4)
-            logger.debug(f"Metadata written to {metadata_path}")  # Changed to debug
+            logger.debug(f"[EXPORT] Metadata written to {metadata_path}")
         except IOError as e:
-            logger.error(f"Could not write metadata file {metadata_path}: {e}")
+            logger.error(f"[EXPORT] Could not write metadata file {metadata_path}: {e}")
 
     def _get_unique_keys(self, table_name):
         """Returns the list of unique key columns for a table."""
@@ -373,7 +373,7 @@ class DBExporter:
         else:
             # Fallback: use all columns from TABLE_COLUMNS if not specified in TABLE_CHECKSUM_COLUMNS
             logger.warning(
-                f"Checksum columns not explicitly defined for {table_name}. Using all columns from TABLE_COLUMNS."
+                f"[EXPORT] Checksum columns not explicitly defined for {table_name}. Using all columns from TABLE_COLUMNS."
             )
             return self._get_columns_for_table(table_name)  # Reuse the other function
 
@@ -390,7 +390,7 @@ class DBExporter:
                 # Ensure alarm data is loaded for tblAlarmLog operations
                 self._ensure_alarm_data_loaded()
                 if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                    logger.error("Failed to load alarms_0_1 for tblAlarmLog check.")
+                    logger.error("[EXPORT] Failed to load alarms_0_1 for tblAlarmLog check.")
                     return None, None
 
                 alarm_codes_tuple = tuple(self.alarms_0_1.tolist())
@@ -426,8 +426,8 @@ class DBExporter:
                 """
 
             logger.debug(
-                f"Executing state check query for {table_name}"
-            )  #: {query}") # Hide query details
+                f"[EXPORT] Executing state check query for {table_name}"
+            )
 
             # Use SQLAlchemy engine if available, otherwise fall back to connection pool
             if (
@@ -446,17 +446,17 @@ class DBExporter:
                     if result:
                         count = result[0]
                         checksum_agg = result[1] if result[1] is not None else 0
-                        logger.debug(  # Changed to debug
-                            f"DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
+                        logger.debug(
+                            f"[EXPORT] DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
                         )
                         return count, checksum_agg
                     else:
                         logger.warning(
-                            f"Could not retrieve state for {table_name} for period."
+                            f"[EXPORT] Could not retrieve state for {table_name} for period."
                         )
                         return None, None
                 except Exception as e:
-                    logger.error(f"Error executing query with SQLAlchemy engine: {e}")
+                    logger.error(f"[EXPORT] Error executing query with SQLAlchemy engine: {e}")
                     connection.close()
                     return None, None
             else:
@@ -470,21 +470,21 @@ class DBExporter:
                     if result:
                         count = result[0]
                         checksum_agg = result[1] if result[1] is not None else 0
-                        logger.debug(  # Changed to debug
-                            f"DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
+                        logger.debug(
+                            f"[EXPORT] DB state for {table_name} ({period_start} to {period_end}): Count={count}, Checksum={checksum_agg}"
                         )
                         return count, checksum_agg
                     else:
                         logger.warning(
-                            f"Could not retrieve state for {table_name} for period."
+                            f"[EXPORT] Could not retrieve state for {table_name} for period."
                         )
                         return None, None
 
         except pyodbc.Error as e:
-            logger.error(f"Database error during state check for {table_name}: {e}")
+            logger.error(f"[EXPORT] Database error during state check for {table_name}: {e}")
             return None, None
         except Exception as e:
-            logger.error(f"Unexpected error during state check for {table_name}: {e}")
+            logger.error(f"[EXPORT] Unexpected error during state check for {table_name}: {e}")
             return None, None
 
     def _fetch_db_data(self, table_name, period_start, period_end):
@@ -501,7 +501,7 @@ class DBExporter:
                     # Ensure alarm data is loaded for tblAlarmLog operations
                     self._ensure_alarm_data_loaded()
                     if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                        logger.error("Failed to load alarms_0_1 for tblAlarmLog fetch.")
+                        logger.error("[EXPORT] Failed to load alarms_0_1 for tblAlarmLog fetch.")
                         return pd.DataFrame()
                     query = self.construct_query(
                         period_start, period_end, self.alarms_0_1
@@ -514,12 +514,12 @@ class DBExporter:
                     ORDER BY TimeStamp, StationId -- Add ordering for consistency
                     """
                 logger.info(
-                    f"Fetching data for {table_name} ({period_start} to {period_end})"
+                    f"[EXPORT] Fetching data for {table_name} ({period_start} to {period_end})"
                 )
                 # Use SQLAlchemy engine directly with pandas
                 df = pd.read_sql(query, self.connection_pool.engine)
                 logger.info(
-                    f"Fetched {len(df)} rows from DB for {table_name} using SQLAlchemy engine"
+                    f"[EXPORT] Fetched {len(df)} rows from DB for {table_name} using SQLAlchemy engine"
                 )
             else:
                 # Fall back to using the connection pool if engine is not available
@@ -529,7 +529,7 @@ class DBExporter:
                         self._ensure_alarm_data_loaded()
                         if self.alarms_0_1 is None or self.alarms_0_1.empty:
                             logger.error(
-                                "Failed to load alarms_0_1 for tblAlarmLog fetch."
+                                "[EXPORT] Failed to load alarms_0_1 for tblAlarmLog fetch."
                             )
                             return pd.DataFrame()
                         query = self.construct_query(
@@ -543,14 +543,14 @@ class DBExporter:
                         ORDER BY TimeStamp, StationId -- Add ordering for consistency
                         """
                     logger.info(
-                        f"Fetching data for {table_name} ({period_start} to {period_end})"
+                        f"[EXPORT] Fetching data for {table_name} ({period_start} to {period_end})"
                     )
                     logger.warning(
-                        "Using direct pyodbc connection as fallback (SQLAlchemy engine not available)"
+                        "[EXPORT] Using direct pyodbc connection as fallback (SQLAlchemy engine not available)"
                     )
                     df = pd.read_sql(query, conn)
                     logger.info(
-                        f"Fetched {len(df)} rows from DB for {table_name} using pyodbc connection"
+                        f"[EXPORT] Fetched {len(df)} rows from DB for {table_name} using pyodbc connection"
                     )
 
             # Standardize TimeStamp columns (for both SQLAlchemy and pyodbc paths)
@@ -565,7 +565,7 @@ class DBExporter:
 
                 return df
         except Exception as e:
-            logger.error(f"Failed to fetch data for {table_name}: {e}")
+            logger.error(f"[EXPORT] Failed to fetch data for {table_name}: {e}")
             return pd.DataFrame()
 
     def _apply_manual_adjustments(self, df):
@@ -591,7 +591,7 @@ class DBExporter:
                             adjustment_count += 1
                         else:
                             logger.warning(
-                                f"Invalid time_off format in adjustment for ID {adjustment['id']}: {adjustment['time_off']}"
+                                f"[EXPORT] Invalid time_off format in adjustment for ID {adjustment['id']}: {adjustment['time_off']}"
                             )
 
                     # Apply time_on adjustment if present
@@ -602,13 +602,13 @@ class DBExporter:
                             adjustment_count += 1
                         else:
                             logger.warning(
-                                f"Invalid time_on format in adjustment for ID {adjustment['id']}: {adjustment['time_on']}"
+                                f"[EXPORT] Invalid time_on format in adjustment for ID {adjustment['id']}: {adjustment['time_on']}"
                             )
 
                     if adjustment_count > 0:
                         adjustments_applied += 1
                         logger.debug(
-                            f"Applied adjustment for alarm ID {adjustment['id']}: "
+                            f"[EXPORT] Applied adjustment for alarm ID {adjustment['id']}: "
                             f"{'time_on' if 'time_on' in adjustment and adjustment['time_on'] else ''}"
                             f"{' and ' if 'time_on' in adjustment and adjustment['time_on'] and 'time_off' in adjustment and adjustment['time_off'] else ''}"
                             f"{'time_off' if 'time_off' in adjustment and adjustment['time_off'] else ''}"
@@ -616,12 +616,12 @@ class DBExporter:
 
                 except Exception as e:
                     logger.error(
-                        f"Failed to apply adjustment for alarm ID {adjustment['id']}: {e}"
+                        f"[EXPORT] Failed to apply adjustment for alarm ID {adjustment['id']}: {e}"
                     )
 
         if adjustments_applied > 0:
             logger.info(
-                f"Applied {adjustments_applied} manual adjustments to alarm data"
+                f"[EXPORT] Applied {adjustments_applied} manual adjustments to alarm data"
             )
 
         return df_adjusted
@@ -652,7 +652,7 @@ class DBExporter:
             db_df = self._fetch_db_data(table_name, period_start, period_end)
             if db_df.empty and db_count > 0:
                 logger.warning(
-                    f"DB fetch for {table_name} returned empty but DB count was {db_count}."
+                    f"[EXPORT] DB fetch for {table_name} returned empty but DB count was {db_count}."
                 )
             
             # --- Integrated Data Completeness Check ---
@@ -661,16 +661,16 @@ class DBExporter:
                 check_result = integrity.check_completeness(db_df, period_start, period_end)
                 if check_result.get("missing_count", 0) > 0:
                     logger.warning(
-                        f"COMPLETENESS CHECK WARNING for {table_name}: "
+                        f"[EXPORT] COMPLETENESS CHECK WARNING for {table_name}: "
                         f"{check_result['missing_count']} missing intervals "
                         f"({check_result['completeness_percentage']}% complete). "
                         f"Proceeding with export."
                     )
                 else:
-                    logger.debug(f"Completeness check passed for {table_name}")
+                    logger.debug(f"[EXPORT] Completeness check passed for {table_name}")
             except Exception as e:
                 # Do not block export on check failure
-                logger.error(f"Error checking completeness for {table_name}: {e}")
+                logger.error(f"[EXPORT] Error checking completeness for {table_name}: {e}")
             # ------------------------------------------
 
             # 2. Read existing CSV if relevant for append/check modes
@@ -679,7 +679,7 @@ class DBExporter:
                 try:
                     existing_df = pd.read_csv(output_path)
                     logger.info(
-                        f"Read {len(existing_df)} rows from existing file {output_path}"
+                        f"[EXPORT] Read {len(existing_df)} rows from existing file {output_path}"
                     )
                     # Convert timestamp columns in existing data
                     for col in ["TimeStamp", "TimeOn", "TimeOff"]:
@@ -689,7 +689,7 @@ class DBExporter:
                             )
                 except Exception as e:
                     logger.error(
-                        f"Failed to read or parse existing CSV {output_path}: {e}. Treating as empty."
+                        f"[EXPORT] Failed to read or parse existing CSV {output_path}: {e}. Treating as empty."
                     )
                     existing_df = pd.DataFrame()
 
@@ -697,12 +697,12 @@ class DBExporter:
 
             if update_mode == "force-overwrite":
                 logger.info(
-                    f"Mode 'force-overwrite': Exporting fresh data for {table_name} to {output_path}"
+                    f"[EXPORT] Mode 'force-overwrite': Exporting fresh data for {table_name} to {output_path}"
                 )
                 final_df = db_df
             elif update_mode == "check":
                 logger.info(
-                    f"Mode 'check': Comparing DB state with existing file for {table_name}"
+                    f"[EXPORT] Mode 'check': Comparing DB state with existing file for {table_name}"
                 )
                 # Note: We could compare counts and checksums here, but it's more reliable to use metadata
                 # Recalculating checksum on existing_df might be needed for accurate check
@@ -714,28 +714,28 @@ class DBExporter:
                 if meta_count is not None and meta_checksum is not None:
                     if db_count == meta_count and db_checksum == meta_checksum:
                         logger.info(
-                            f"Data for {table_name} appears unchanged based on metadata. No export needed."
+                            f"[EXPORT] Data for {table_name} appears unchanged based on metadata. No export needed."
                         )
                         return "NO_CHANGE"
                     else:
                         logger.warning(
-                            f"Data change detected for {table_name} based on metadata (DB: {db_count}/{db_checksum}, Meta: {meta_count}/{meta_checksum}). Recommend re-export."
+                            f"[EXPORT] Data change detected for {table_name} based on metadata (DB: {db_count}/{db_checksum}, Meta: {meta_count}/{meta_checksum}). Recommend re-export."
                         )
                         # In 'check' mode, we don't export, just report.
                         return "CHANGE_DETECTED"
                 else:
                     logger.warning(
-                        f"Metadata not found or invalid for {output_path}. Cannot perform check. Recommend re-export."
+                        f"[EXPORT] Metadata not found or invalid for {output_path}. Cannot perform check. Recommend re-export."
                     )
                     return "METADATA_MISSING"
 
             elif update_mode == "append":
                 logger.info(
-                    f"Mode 'append': Reconciling DB data with existing file for {table_name}"
+                    f"[EXPORT] Mode 'append': Reconciling DB data with existing file for {table_name}"
                 )
                 if existing_df.empty:
                     logger.info(
-                        f"Existing file {output_path} not found or empty. Exporting current DB data."
+                        f"[EXPORT] Existing file {output_path} not found or empty. Exporting current DB data."
                     )
                     final_df = db_df
                 else:
@@ -752,22 +752,22 @@ class DBExporter:
                         key in existing_df.columns for key in unique_keys
                     ):
                         logger.error(
-                            f"Unique key columns missing in DB or existing data for {table_name}. Cannot reconcile. Overwriting."
+                            f"[EXPORT] Unique key columns missing in DB or existing data for {table_name}. Cannot reconcile. Overwriting."
                         )
                         final_df = db_df
                     else:
                         # Add logging before merge
                         logger.debug(
-                            f"[_reconcile] Pre-merge db_df columns: {list(db_df.columns)}"
+                            f"[EXPORT] Pre-merge db_df columns: {list(db_df.columns)}"
                         )
                         logger.debug(
-                            f"[_reconcile] Pre-merge db_df dtypes:\n{db_df.dtypes.to_string()}"
+                            f"[EXPORT] Pre-merge db_df dtypes:\n{db_df.dtypes.to_string()}"
                         )
                         logger.debug(
-                            f"[_reconcile] Pre-merge existing_df columns: {list(existing_df.columns)}"
+                            f"[EXPORT] Pre-merge existing_df columns: {list(existing_df.columns)}"
                         )
                         logger.debug(
-                            f"[_reconcile] Pre-merge existing_df dtypes:\n{existing_df.dtypes.to_string()}"
+                            f"[EXPORT] Pre-merge existing_df dtypes:\n{existing_df.dtypes.to_string()}"
                         )
 
                         # Merge based on unique keys
@@ -780,7 +780,7 @@ class DBExporter:
                             indicator=True,
                         )
                         logger.debug(
-                            f"[_reconcile] Post-merge merged_df columns: {list(merged_df.columns)}"
+                            f"[EXPORT] Post-merge merged_df columns: {list(merged_df.columns)}"
                         )
 
                         # Identify new, deleted, and potentially updated rows
@@ -823,13 +823,13 @@ class DBExporter:
                             c.replace("_db", "") for c in common_rows_corrected.columns
                         ]
                         logger.debug(
-                            f"[_reconcile] Pre-concat common_rows_corrected columns: {list(common_rows_corrected.columns)}"
+                            f"[EXPORT] Pre-concat common_rows_corrected columns: {list(common_rows_corrected.columns)}"
                         )
                         logger.debug(
-                            f"[_reconcile] Pre-concat new_rows columns: {list(new_rows.columns)}"
+                            f"[EXPORT] Pre-concat new_rows columns: {list(new_rows.columns)}"
                         )
                         logger.debug(
-                            f"[_reconcile] Pre-concat deleted_rows columns: {list(deleted_rows.columns)}"
+                            f"[EXPORT] Pre-concat deleted_rows columns: {list(deleted_rows.columns)}"
                         )
 
                         # Combine results
@@ -838,7 +838,7 @@ class DBExporter:
                             ignore_index=True,
                         )
                         logger.debug(
-                            f"[_reconcile] Post-concat final_df columns: {list(final_df.columns)}"
+                            f"[EXPORT] Post-concat final_df columns: {list(final_df.columns)}"
                         )
                         # Drop the merge indicator if it exists
                         if "_merge" in final_df.columns:
@@ -898,12 +898,12 @@ class DBExporter:
                         final_df = final_df.reindex(columns=final_column_order)
 
                         logger.info(
-                            f"Reconciliation for {table_name}: {len(new_rows)} new, {len(deleted_rows)} deleted (kept), {len(common_rows)} common/updated."
+                            f"[EXPORT] Reconciliation for {table_name}: {len(new_rows)} new, {len(deleted_rows)} deleted (kept), {len(common_rows)} common/updated."
                         )
 
             else:
                 logger.error(
-                    f"Invalid update_mode: {update_mode}. Defaulting to force-overwrite."
+                    f"[EXPORT] Invalid update_mode: {update_mode}. Defaulting to force-overwrite."
                 )
                 final_df = db_df
 
@@ -918,7 +918,7 @@ class DBExporter:
             final_df.to_csv(
                 output_path, index=False
             )  # , date_format='%Y-%m-%d %H:%M:%S.%f') # Ensure consistent date format if needed
-            logger.info(f"Successfully exported {len(final_df)} rows to {output_path}")
+            logger.info(f"[EXPORT] Successfully exported {len(final_df)} rows to {output_path}")
 
             # 5. Write metadata
             self._write_metadata(
@@ -928,8 +928,8 @@ class DBExporter:
 
         except Exception as e:
             logger.exception(
-                f"Error during reconcile/export for {table_name}: {e}"
-            )  # Use exception for stack trace
+                f"[EXPORT] Error during reconcile/export for {table_name}: {e}"
+            )
             return "EXPORT_FAILED"
 
     def construct_query(self, period_start, period_end, alarms_0_1):
@@ -961,7 +961,7 @@ class DBExporter:
                 if table_name == "tblAlarmLog":
                     # Update alarms (using append to be safe)
                     update_mode = "append"
-                    logger.info(f"Mode 'process-existing-except-alarms': Treating {table_name} as 'append'")
+                    logger.info(f"[EXPORT] Mode 'process-existing-except-alarms': Treating {table_name} as 'append'")
                 else:
                     # Process existing for others so we don't fetch from DB
                     update_mode = "process-existing"
@@ -1054,7 +1054,7 @@ class DBExporter:
             period_end = period_end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
             logger.info(
-                f"Exporting {table_name} for period {period} ({period_start} to {period_end}) with mode '{update_mode}'"
+                f"[EXPORT] Exporting {table_name} for period {period} ({period_start} to {period_end}) with mode '{update_mode}'"
             )
 
             # 1. Check current DB state
@@ -1063,7 +1063,7 @@ class DBExporter:
             )
             if db_count is None:
                 logger.error(
-                    f"Failed to get DB state for {table_name}. Skipping export."
+                    f"[EXPORT] Failed to get DB state for {table_name}. Skipping export."
                 )
                 return False  # Indicate failure
 
@@ -1098,20 +1098,20 @@ class DBExporter:
                 if meta_count is not None and meta_checksum is not None:
                     if db_count == meta_count and db_checksum == meta_checksum:
                         logger.info(
-                            f"Data for {table_name} appears unchanged based on metadata. Skipping reconciliation export."
+                            f"[EXPORT] Data for {table_name} appears unchanged based on metadata. Skipping reconciliation export."
                         )
                         return True  # Success, no change needed
                     else:
                         logger.info(
-                            f"Metadata indicates change for {table_name}. Proceeding with reconciliation."
+                            f"[EXPORT] Metadata indicates change for {table_name}. Proceeding with reconciliation."
                         )
                 else:
                     logger.info(
-                        f"No valid metadata for {table_name}. Proceeding with reconciliation/export."
+                        f"[EXPORT] No valid metadata for {table_name}. Proceeding with reconciliation/export."
                     )
 
             else:  # Invalid mode
-                logger.error(f"Invalid update_mode '{update_mode}'. Cannot export.")
+                logger.error(f"[EXPORT] Invalid update_mode '{update_mode}'. Cannot export.")
                 return False
 
             # 4. Perform reconciliation and export if needed
@@ -1132,7 +1132,7 @@ class DBExporter:
 
         except Exception as e:
             logger.exception(
-                f"Failed to export data for {table_name} for period {period}: {e}"
+                f"[EXPORT] Failed to export data for {table_name} for period {period}: {e}"
             )
             return False
 
@@ -1143,7 +1143,7 @@ class DBExporter:
             return ", ".join(columns)
         else:
             logger.warning(
-                f"Column definition not found in TABLE_COLUMNS for table: {table_name}. Selecting all columns (*)."
+                f"[EXPORT] Column definition not found in TABLE_COLUMNS for table: {table_name}. Selecting all columns (*)."
             )
             return "*"
 
@@ -1178,7 +1178,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
     try:
         for file_type in file_types:
             if file_type not in TABLE_MAPPINGS:
-                logger.warning(f"Unknown file type '{file_type}'. Skipping.")
+                logger.warning(f"[EXPORT] Unknown file type '{file_type}'. Skipping.")
                 results[file_type] = False
                 continue
 
@@ -1192,7 +1192,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
 
             os.makedirs(csv_dir, exist_ok=True)
 
-            logger.info(f"--- Processing {file_type_upper} for {period} ---")
+            logger.info(f"[EXPORT] --- Processing {file_type_upper} for {period} ---")
 
             # Export data (includes reconciliation based on update_mode)
             export_success = exporter.export_table_data(
@@ -1207,7 +1207,7 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
             # Optionally remove metadata file if export failed? Or keep it? Keeping it for now.
 
     except Exception as e:  # Keep the main exception handling
-        logger.exception(f"An unexpected error occurred during export process: {e}")
+        logger.exception(f"[EXPORT] An unexpected error occurred during export process: {e}")
         # Mark all requested types as failed if a major error occurs
         for ft in file_types:
             results[ft] = False
@@ -1271,7 +1271,7 @@ def export_data_for_period(
                     description=f"Exporting {file_type.upper()} - {'OK' if success else 'FAIL'}",
                 )
             except Exception as e:
-                logger.error(f"Export failed for {file_type}: {e}")
+                logger.error(f"[EXPORT] Export failed for {file_type}: {e}")
                 results[file_type] = False
                 progress.update(
                     task_id,
@@ -1293,7 +1293,7 @@ def main_export_flow(
     Main function to orchestrate export of data and alarms for the given period
     """
     logger.info(
-        f"--- Starting Data Export for Period: {period} (Mode: {update_mode}) ---"
+        f"[EXPORT] --- Starting Data Export for Period: {period} (Mode: {update_mode}) ---"
     )
 
     # Ensure base directories exist first
@@ -1321,10 +1321,10 @@ def main_export_flow(
     # Results are directly from export_data_for_period now
     final_results = data_results
 
-    logger.info(f"\n--- Export Summary for {period} ---")
+    logger.info(f"[EXPORT] \n--- Export Summary for {period} ---")
     for ft, success in final_results.items():
-        logger.info(f"{ft.upper()}: {'SUCCESS' if success else 'FAILED'}")
-    logger.info("--- Export Process Finished ---")
+        logger.info(f"[EXPORT] {ft.upper()}: {'SUCCESS' if success else 'FAILED'}")
+    logger.info("[EXPORT] --- Export Process Finished ---")
 
 
 # --- Helper Functions ---
@@ -1352,7 +1352,7 @@ def generate_period_range(start_period, end_period=None):
 
     # Ensure start date is before or equal to end date
     if start_date > end_date:
-        logger.error(f"Start period {start_period} is after end period {end_period}")
+        logger.error(f"[EXPORT] Start period {start_period} is after end period {end_period}")
         return []
 
     # Generate list of periods
@@ -1404,18 +1404,18 @@ if __name__ == "__main__":
             datetime.strptime(args.period_end, "%Y-%m")
     except ValueError:
         logger.error(
-            "Invalid period format. Please use YYYY-MM format (e.g., 2023-01)."
+            "[EXPORT] Invalid period format. Please use YYYY-MM format (e.g., 2023-01)."
         )
         exit(1)
 
     # Generate list of periods to process
     periods = generate_period_range(args.period_start, args.period_end)
     if not periods:
-        logger.error("No valid periods to process.")
+        logger.error("[EXPORT] No valid periods to process.")
         exit(1)
 
     # Process each period
     for period in periods:
-        logger.info(f"\n=== Processing period: {period} ===")
+        logger.info(f"[EXPORT] \n=== Processing period: {period} ===")
         # Run the main export flow for this period
         main_export_flow(period, args.types, args.update_mode)

@@ -105,26 +105,26 @@ def cleanup_resources():
     """Cleanup multiprocessing resources on shutdown."""
     global _manager, _current_process
     
-    logger.info("Cleaning up resources...")
+    logger.info("[API] Cleaning up resources...")
     
     if _current_process is not None and _current_process.is_alive():
-        logger.info("Terminating running process...")
+        logger.info("[API] Terminating running process...")
         try:
             _current_process.terminate()
             _current_process.join(timeout=2)
             if _current_process.is_alive():
                 _current_process.kill()
         except Exception as e:
-            logger.error(f"Error terminating process: {e}")
+            logger.error(f"[API] Error terminating process: {e}")
             
     if _manager is not None:
-        logger.info("Shutting down multiprocessing manager...")
+        logger.info("[API] Shutting down multiprocessing manager...")
         try:
             _manager.shutdown()
         except Exception as e:
-            logger.error(f"Error shutting down manager: {e}")
+            logger.error(f"[API] Error shutting down manager: {e}")
             
-    logger.info("Cleanup complete.")
+    logger.info("[API] Cleanup complete.")
 
 
 def run_processing_worker(status_dict, dates: List[str], update_mode: str):
@@ -173,21 +173,21 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
             try:
                 title = f"From {period_start_dt.strftime('%Y_%m_%d')} To {period_end_dt.strftime('%Y_%m_%d')}"
                 
-                logger.info("Sending availability report email...")
+                logger.info("[API] Sending availability report email...")
                 email_send.send_email(
                     df=df_exploi,
                     receiver_email=config.EMAIL_CONFIG["receiver_default"],
                     subject=f"Indisponibilité {title}"
                 )
                 
-                logger.info("Sending Top 15 report email...")
+                logger.info("[API] Sending Top 15 report email...")
                 email_send.send_email(
                     df=df_Top15,
                     receiver_email=config.EMAIL_CONFIG["receiver_default"],
                     subject=f"Top 15 Total Energy Lost(MWh){title}"
                 )
             except Exception as e:
-                logger.error(f"Failed to send email reports: {e}")
+                logger.error(f"[API] Failed to send email reports: {e}")
                 # We don't stop the process if email fails, just log it
             
             # Step 5: Data Integrity Validation
@@ -198,13 +198,13 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
                 # Filter unique periods just in case
                 validation_periods = list(set(validation_periods))
                 
-                logger.info(f"Running scoped validation for periods: {validation_periods} up to {date_str}")
+                logger.info(f"[API] Running scoped validation for periods: {validation_periods} up to {date_str}")
                 validation_runner.run_validation_scan(
                     target_periods=validation_periods, 
                     override_end_date=date_str
                 )
             except Exception as e:
-                logger.error(f"Data validation failed: {e}")
+                logger.error(f"[API] Data validation failed: {e}")
         
         status_dict["status"] = "completed"
         status_dict["message"] = f"Successfully processed {len(dates)} date(s)"
@@ -475,7 +475,7 @@ async def bulk_delete_alarms(request: BulkDeleteRequest):
 @router.put("/alarms/bulk/update")
 async def bulk_update_alarms(request: BulkUpdateRequest):
     """Update multiple alarm adjustments."""
-    logger.info(f"Bulk update request: ids={request.ids}, data={request.data}")
+    logger.info(f"[API] Bulk update request: ids={request.ids}, data={request.data}")
     
     # Convert Pydantic model to dict, excluding None values
     update_data = {k: v for k, v in request.data.dict().items() if v is not None}
@@ -674,7 +674,7 @@ async def list_files(path: str = ""):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        logger.error(f"Error listing files at {path}: {e}")
+        logger.error(f"[API] Error listing files at {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -705,7 +705,7 @@ async def download_file(path: str):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        logger.error(f"Error downloading file at {path}: {e}")
+        logger.error(f"[API] Error downloading file at {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -729,7 +729,7 @@ async def download_zip(request: BulkDownloadRequest):
                 
                 # Check security
                 if not str(target_path).startswith(str(BASE_DATA_DIR)):
-                    logger.warning(f"Skipping security violation path: {path}")
+                    logger.warning(f"[API] Skipping security violation path: {path}")
                     continue
                     
                 if target_path.exists() and target_path.is_file():
@@ -759,7 +759,7 @@ async def download_zip(request: BulkDownloadRequest):
         )
 
     except Exception as e:
-        logger.error(f"Error creating zip: {e}")
+        logger.error(f"[API] Error creating zip: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -832,7 +832,7 @@ async def search_files(
         return items
 
     except Exception as e:
-        logger.error(f"Error searching files: {e}")
+        logger.error(f"[API] Error searching files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

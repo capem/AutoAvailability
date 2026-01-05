@@ -50,7 +50,7 @@ def _load_config() -> Dict[str, Any]:
                 saved = json.load(f)
                 _scheduler_config.update(saved)
         except Exception as e:
-            logger.error(f"Failed to load scheduler config: {e}")
+            logger.error(f"[SCHEDULER] Failed to load scheduler config: {e}")
     return _scheduler_config
 
 
@@ -61,7 +61,7 @@ def _save_config() -> None:
         with open(SCHEDULER_CONFIG_FILE, "w") as f:
             json.dump(_scheduler_config, f, indent=2, default=str)
     except Exception as e:
-        logger.error(f"Failed to save scheduler config: {e}")
+        logger.error(f"[SCHEDULER] Failed to save scheduler config: {e}")
 
 
 def _send_failure_alert(error_message: str, job_time: datetime) -> None:
@@ -87,9 +87,9 @@ def _send_failure_alert(error_message: str, job_time: datetime) -> None:
             receiver_email=config.EMAIL_CONFIG["receiver_default"],
             subject=subject
         )
-        logger.info("Failure alert email sent successfully")
+        logger.info("[SCHEDULER] Failure alert email sent successfully")
     except Exception as e:
-        logger.error(f"Failed to send failure alert email: {e}")
+        logger.error(f"[SCHEDULER] Failed to send failure alert email: {e}")
 
 
 def _processing_worker() -> None:

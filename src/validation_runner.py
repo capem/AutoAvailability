@@ -33,7 +33,7 @@ def run_validation_scan(target_periods=None, override_end_date=None):
         target_periods (list): Optional list of 'YYYY-MM' strings to filter files.
         override_end_date (str): Optional 'YYYY-MM-DD' date to cap the check period.
     """
-    logger.info("Starting full data validation scan...")
+    logger.info("[VALIDATE] Starting full data validation scan...")
     
     report = {
         "last_run": datetime.now().isoformat(),
@@ -53,7 +53,7 @@ def run_validation_scan(target_periods=None, override_end_date=None):
     
     met_dir = BASE_DATA_DIR / "data" / "MET"
     if not met_dir.exists():
-        logger.error(f"MET data directory not found: {met_dir}")
+        logger.error(f"[VALIDATE] MET data directory not found: {met_dir}")
         return report
 
     all_files = sorted(list(met_dir.glob("*-met.csv")))
@@ -80,11 +80,11 @@ def run_validation_scan(target_periods=None, override_end_date=None):
             # Make it end of day
             parsed_override_end = parsed_override_end.replace(hour=23, minute=59, second=59)
         except:
-             logger.warning(f"Invalid override end date: {override_end_date}")
+             logger.warning(f"[VALIDATE] Invalid override end date: {override_end_date}")
 
     for file_path in files:
         try:
-            logger.info(f"Scanning {file_path.name}...")
+            logger.info(f"[VALIDATE] Scanning {file_path.name}...")
             
             # Extract period from filename (YYYY-MM-met.csv)
             try:
@@ -106,7 +106,7 @@ def run_validation_scan(target_periods=None, override_end_date=None):
                 period_end = min(limit_date, datetime.now())
 
             except ValueError:
-                logger.warning(f"Could not parse period from filename {file_path.name}. Skipping completeness check.")
+                logger.warning(f"[VALIDATE] Could not parse period from filename {file_path.name}. Skipping completeness check.")
                 period_start = None
                 period_end = None
 
@@ -149,8 +149,8 @@ def run_validation_scan(target_periods=None, override_end_date=None):
                 report["details"].append(file_report)
                 
         except Exception as e:
-            logger.error(f"Error processing file {file_path.name}: {e}")
-            logger.debug(traceback.format_exc())
+            logger.error(f"[VALIDATE] Error processing file {file_path.name}: {e}")
+            logger.debug(f"[VALIDATE] Traceback: {traceback.format_exc()}")
             report["details"].append({
                 "file": file_path.name,
                 "error": str(e)
@@ -162,8 +162,8 @@ def run_validation_scan(target_periods=None, override_end_date=None):
     try:
         with open(REPORT_FILE, "w") as f:
             json.dump(report, f, cls=CustomJSONEncoder, indent=4)
-        logger.info(f"Validation report saved to {REPORT_FILE}")
+        logger.info(f"[VALIDATE] Validation report saved to {REPORT_FILE}")
     except Exception as e:
-         logger.error(f"Failed to save validation report: {e}")
+         logger.error(f"[VALIDATE] Failed to save validation report: {e}")
 
     return report

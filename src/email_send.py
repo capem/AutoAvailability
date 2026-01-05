@@ -81,12 +81,12 @@ def send_email(
 
     # SMTP server configuration
     try:
-        logger.info(f"Sending email to {receiver_email} with subject: {subject}")
+        logger.info(f"[EMAIL] Sending email to {receiver_email} with subject: {subject}")
         server = smtplib.SMTP(config.EMAIL_CONFIG["smtp_host"], config.EMAIL_CONFIG["smtp_port"])
         server.starttls()
         server.login(sender_email, email_password)
         server.send_message(message, from_addr=sender_email, to_addrs=receiver_email)
         server.quit()
-        logger.info(f"Email sent successfully to {receiver_email}")
+        logger.info(f"[EMAIL] Email sent successfully to {receiver_email}")
     except Exception as e:
-        logger.error(f"Failed to send email: {str(e)}")
+        logger.error(f"[EMAIL] Failed to send email: {str(e)}")

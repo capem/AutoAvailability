@@ -38,7 +38,7 @@ def read_csv_data(data_type, period):
              raise FileNotFoundError(f"CSV file not found at {csv_file}")
         # Pass dtype option if defined
         df = pd.read_csv(csv_file, **read_options)
-        logger.debug(f"Read {csv_file} with options: {read_options}. Dtypes: {df.dtypes}") # Add debug log
+        logger.debug(f"[CALC] Read {csv_file} with options: {read_options}. Dtypes: {df.dtypes}")
     except Exception as e:
         raise ValueError(f"Error reading CSV file {csv_file}: {str(e)}")
 
@@ -476,12 +476,12 @@ def calculate_potential_energy_from_turbine(df):
     )
 
     # Log debug information
-    logger.debug(f"calculate_potential_energy_from_turbine called with DataFrame of shape {df.shape}")
-    logger.debug(f"Available columns in DataFrame: {list(df.columns)}")
+    logger.debug(f"[CALC] calculate_potential_energy_from_turbine called with DataFrame of shape {df.shape}")
+    logger.debug(f"[CALC] Available columns in DataFrame: {list(df.columns)}")
 
     # Define the turbine wind speed column to use
     turbine_wind_column = "wtc_AcWindSp_mean"
-    logger.debug(f"Looking for turbine wind speed column: {turbine_wind_column}")
+    logger.debug(f"[CALC] Looking for turbine wind speed column: {turbine_wind_column}")
 
     # Check if turbine wind speed column exists in the DataFrame
     if turbine_wind_column in df.columns:
@@ -697,8 +697,8 @@ class DataLoader:
         met_data["TimeStamp"] = pd.to_datetime(met_data["TimeStamp"])
 
         # Log debug information before pivoting
-        logger.debug(f"[load_met_data] Pre-pivot columns: {list(met_data.columns)}")
-        logger.debug(f"[load_met_data] Pre-pivot shape: {met_data.shape}")
+        logger.debug(f"[CALC] Pre-pivot columns: {list(met_data.columns)}")
+        logger.debug(f"[CALC] Pre-pivot shape: {met_data.shape}")
 
         # Pivot the data to create columns for each station and measurement
         met_data = met_data.pivot_table(
@@ -718,8 +718,8 @@ class DataLoader:
         met_data.columns = ["_".join(str(v) for v in tup) if type(tup) is tuple else tup for tup in met_data.columns]
 
         # Log debug information after pivoting
-        logger.debug(f"[load_met_data] Post-pivot columns: {list(met_data.columns)}")
-        logger.debug(f"[load_met_data] Post-pivot shape: {met_data.shape}")
+        logger.debug(f"[CALC] Post-pivot columns: {list(met_data.columns)}")
+        logger.debug(f"[CALC] Post-pivot shape: {met_data.shape}")
 
         return met_data
 
@@ -863,11 +863,11 @@ def full_calculation(period):
     alarm_data["OldTimeOff"] = alarm_data["TimeOff"]
 
     # Log information about missing TimeOff values
-    logger.info(f"TimeOff NAs = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1)].TimeOff.isna().sum()}")
+    logger.info(f"[CALC] TimeOff NAs = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1)].TimeOff.isna().sum()}")
 
     if alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1)].TimeOff.isna().sum():
         logger.info(
-            f"Earliest TimeOn when TimeOff is NA = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1) & alarm_data.TimeOff.isna()].TimeOn.min()}"
+            f"[CALC] Earliest TimeOn when TimeOff is NA = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1) & alarm_data.TimeOff.isna()].TimeOn.min()}"
         )
 
     # Fill missing TimeOff values with period end
@@ -919,7 +919,7 @@ def full_calculation(period):
     processed_alarms = handle_alarm_code_1005_overlap(processed_alarms)
 
     # -------------------Process code 2006(DG:Local power limit - OEM) warnings (special case)-----------------------------
-    logger.info("Processing code 2006(DG:Local power limit - OEM) warnings")
+    logger.info("[CALC] Processing code 2006(DG:Local power limit - OEM) warnings")
 
     # Extract code 2006 alarms
     alarms_code_2006 = alarm_data.loc[(alarm_data["Alarmcode"] == 2006)].copy()
@@ -957,11 +957,11 @@ def full_calculation(period):
         alarms_code_2006_intervals["Duration 2006(s)"] = alarms_code_2006_intervals["Duration 2006(s)"].dt.total_seconds().fillna(0)
 
     else:
-        logger.info("No code 2006 warnings found")
+        logger.info("[CALC] No code 2006 warnings found")
         alarms_code_2006_intervals = pd.DataFrame(columns=["TimeStamp", "Duration 2006(s)", "StationId"])
 
     # ----------------------- Convert other alarms to 10-minute intervals --------------------------------------
-    logger.info("Converting alarms to 10-minute intervals")
+    logger.info("[CALC] Converting alarms to 10-minute intervals")
 
     # Filter out zero-duration alarms
     non_zero_alarms = processed_alarms.loc[(processed_alarms["EffectiveAlarmTime"].dt.total_seconds() != 0)].copy()
@@ -1011,7 +1011,7 @@ def full_calculation(period):
     aggregated_alarms["EffectiveAlarmTime"] = aggregated_alarms["EffectiveAlarmTime"].dt.total_seconds().fillna(0)
 
 
-    logger.info("Alarm aggregation completed")
+    logger.info("[CALC] Alarm aggregation completed")
 
     # ----------Merge with code 2006 warnings----------
     aggregated_alarms = pd.merge(
@@ -1020,7 +1020,7 @@ def full_calculation(period):
 
     # -------Merge with other data sources------
     # Merge with counter data (energy production)
-    logger.info("Merging alarm data with energy production data")
+    logger.info("[CALC] Merging alarm data with energy production data")
     results = pd.merge(aggregated_alarms, counter_data, on=["TimeStamp", "StationId"], how="left").reset_index(drop=True)
 
     # Merge with grid data (power output)
@@ -1043,10 +1043,10 @@ def full_calculation(period):
     )
 
     # Merge with meteorological data
-    logger.debug(f"[full_calculation] Pre-MET merge 'results' shape: {results.shape}")
+    logger.debug(f"[CALC] Pre-MET merge 'results' shape: {results.shape}")
     results = pd.merge(results, met_data, on="TimeStamp", how="left")
-    logger.debug(f"[full_calculation] Post-MET merge 'results' columns: {list(results.columns)}")
-    logger.debug(f"[full_calculation] Post-MET merge 'results' shape: {results.shape}")
+    logger.debug(f"[CALC] Post-MET merge 'results' columns: {list(results.columns)}")
+    logger.debug(f"[CALC] Post-MET merge 'results' shape: {results.shape}")
 
     # Merge with digital input data (curtailment)
     results = pd.merge(results, digital_input_data, on=["StationId", "TimeStamp"], how="left")
@@ -1125,8 +1125,8 @@ def full_calculation(period):
     
 
     # Log debug information
-    logger.debug(f"[full_calculation] Pre-Epot check 'final_results' columns: {list(final_results.columns)}")
-    logger.debug(f"[full_calculation] Pre-Epot check 'final_results' shape: {final_results.shape}")
+    logger.debug(f"[CALC] Pre-Epot check 'final_results' columns: {list(final_results.columns)}")
+    logger.debug(f"[CALC] Pre-Epot check 'final_results' shape: {final_results.shape}")
 
     # -------- Handle missing potential energy values --------------------------------------
     # Check if there are any NA values in the 'Epot' column
@@ -1134,18 +1134,18 @@ def full_calculation(period):
         # Create mask for rows with missing Epot
         missing_epot_mask = final_results["Epot"].isna()
         missing_count = missing_epot_mask.sum()
-        logger.info(f"Found {missing_count} NA values in 'Epot' column, attempting to fill with turbine data (Case 2: Anemometer)")
+        logger.info(f"[CALC] Found {missing_count} NA values in 'Epot' column, attempting to fill with turbine data (Case 2: Anemometer)")
 
         # Extract rows with missing Epot
         df_for_potential_energy = final_results.loc[missing_epot_mask]
-        logger.debug(f"DataFrame for potential energy calculation has shape {df_for_potential_energy.shape}")
-        logger.debug(f"[full_calculation] Columns available: {list(df_for_potential_energy.columns)}")
+        logger.debug(f"[CALC] DataFrame for potential energy calculation has shape {df_for_potential_energy.shape}")
+        logger.debug(f"[CALC] Columns available: {list(df_for_potential_energy.columns)}")
 
         # Try to calculate potential energy using turbine data (Case 2: Anemometer)
         potential_energy_values_case2 = None
         try:
             potential_energy_values_case2 = calculate_potential_energy_from_turbine(df_for_potential_energy)
-            logger.info("Successfully calculated potential energy from turbine data (Case 2: Anemometer)")
+            logger.info("[CALC] Successfully calculated potential energy from turbine data (Case 2: Anemometer)")
             
             # Update Epot and Epot_Method for rows where we got valid values from Case 2
             valid_case2_mask = ~np.isnan(potential_energy_values_case2)
@@ -1161,18 +1161,18 @@ def full_calculation(period):
                     final_results.loc[case2_update_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
                 )
         except Exception as e:
-            logger.error(f"Error calculating potential energy from turbine data: {str(e)}")
+            logger.error(f"[CALC] Error calculating potential energy from turbine data: {str(e)}")
 
         # For rows that are still missing Epot after Case 2, use statistical method (Case 3: SWE)
         still_missing_epot_mask = final_results["Epot"].isna()
         if still_missing_epot_mask.any():
             still_missing_count = still_missing_epot_mask.sum()
-            logger.info(f"Found {still_missing_count} NA values in 'Epot' column after Case 2, using statistical method (Case 3: SWE)")
+            logger.info(f"[CALC] Found {still_missing_count} NA values in 'Epot' column after Case 2, using statistical method (Case 3: SWE)")
             
             try:
                 # Use the period to calculate potential energy from statistics
                 potential_energy_values_case3 = calculate_potential_energy_from_statistics(period)
-                logger.info("Successfully calculated potential energy from statistical method (Case 3: SWE)")
+                logger.info("[CALC] Successfully calculated potential energy from statistical method (Case 3: SWE)")
                 
                 # Update Epot and Epot_Method for remaining missing values
                 final_results.loc[still_missing_epot_mask, "Epot_Method"] = "SWE"
@@ -1181,7 +1181,7 @@ def full_calculation(period):
                     final_results.loc[still_missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
                 )
             except Exception as e:
-                logger.error(f"Error calculating potential energy from statistical method: {str(e)}")
+                logger.error(f"[CALC] Error calculating potential energy from statistical method: {str(e)}")
 
     # -------- Calculate energy loss --------------------------------------
     # Calculate total energy loss (potential - actual)
@@ -1340,7 +1340,7 @@ def full_calculation(period):
     final_results[numeric_columns] = final_results[numeric_columns].round(2).astype(np.float32)
 
     # Log the earliest alarm date
-    logger.warning(f"First date in alarm = {warning_date}")
+    logger.warning(f"[CALC] First date in alarm = {warning_date}")
 
 
     return final_results

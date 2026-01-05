@@ -16,7 +16,7 @@ def process_grouped_results(results, period_month):
     Returns:
         DataFrame: The processed and grouped results
     """
-    logger.info(f"Processing grouped results for period {period_month}")
+    logger.info(f"[GROUPER] Processing grouped results for period {period_month}")
 
     # Group and round the results
     results_grouped = (
@@ -76,7 +76,7 @@ def process_grouped_results(results, period_month):
     csv_filename = f"{output_dir}/grouped_{period_month}-Availability.csv"
     results_grouped.to_csv(csv_filename, decimal=",", sep=",")
 
-    logger.info(f"Saved grouped results to {csv_filename}")
+    logger.info(f"[GROUPER] Saved grouped results to {csv_filename}")
 
     return results_grouped
 

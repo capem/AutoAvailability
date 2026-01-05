@@ -238,7 +238,7 @@ class CleanWindFarmTUI:
             
         except Exception as e:
             console.print(f"\n[bold red]✗ Processing failed: {str(e)}[/bold red]")
-            logger.exception("Processing failed")
+            logger.exception("[APP] Processing failed")
         
     def _export_data_clean(self, run_date: datetime):
         """Clean data export"""
@@ -697,7 +697,7 @@ def main():
         tui.run()
     except Exception as e:
         console.print(f"[red]Fatal error: {str(e)}[/red]")
-        logger.exception("Fatal error in TUI")
+        logger.exception("[APP] Fatal error in TUI")
         return 1
     return 0
 

@@ -36,7 +36,7 @@ def load_adjustments():
         with open(ADJUSTMENTS_FILE, "r") as f:
             return json.load(f)
     except json.JSONDecodeError:
-        logger.error(f"Error parsing {ADJUSTMENTS_FILE}. File may be corrupted.")
+        logger.error(f"[ALARMS] Error parsing {ADJUSTMENTS_FILE}. File may be corrupted.")
         return {"adjustments": []}
 
 
@@ -45,10 +45,10 @@ def save_adjustments(adjustments):
     try:
         with open(ADJUSTMENTS_FILE, "w") as f:
             json.dump(adjustments, f, indent=4)
-        logger.info(f"Adjustments saved to {ADJUSTMENTS_FILE}")
+        logger.info(f"[ALARMS] Adjustments saved to {ADJUSTMENTS_FILE}")
         return True
     except Exception as e:
-        logger.error(f"Error saving adjustments: {e}")
+        logger.error(f"[ALARMS] Error saving adjustments: {e}")
         return False
 
 
@@ -77,7 +77,7 @@ def list_adjustments():
             missing_fields.append(f"Adjustment ID {adj.get('id', 'Unknown')}: missing {', '.join(missing)}")
     
     if missing_fields:
-        logger.warning("Found adjustments with missing fields: " + "; ".join(missing_fields))
+        logger.warning("[ALARMS] Found adjustments with missing fields: " + "; ".join(missing_fields))
 
     table = Table(title="Manual Alarm Adjustments")
     table.add_column("ID", justify="right", style="cyan")
@@ -117,12 +117,12 @@ def add_adjustment(args):
     for adj in adjustments["adjustments"]:
         if adj.get("id") == args.id:
             logger.error(
-                f"Adjustment with ID {args.id} already exists. Use update instead."
+                f"[ALARMS] Adjustment with ID {args.id} already exists. Use update instead."
             )
             return False
 
     if not args.time_on and not args.time_off:
-        logger.error("At least one of --time_on or --time_off must be provided.")
+        logger.error("[ALARMS] At least one of --time_on or --time_off must be provided.")
         return False
 
     time_on = None
@@ -130,7 +130,7 @@ def add_adjustment(args):
         try:
             time_on = datetime.strptime(args.time_on, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            logger.error("Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
+            logger.error("[ALARMS] Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
             return False
 
     time_off = None
@@ -138,11 +138,11 @@ def add_adjustment(args):
         try:
             time_off = datetime.strptime(args.time_off, "%Y-%m-%d %H:%M:%S")
         except ValueError:
-            logger.error("Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
+            logger.error("[ALARMS] Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
             return False
 
     if time_on and time_off and time_off <= time_on:
-        logger.error("Time Off must be after Time On")
+        logger.error("[ALARMS] Time Off must be after Time On")
         return False
 
     # Create new adjustment
@@ -161,7 +161,7 @@ def add_adjustment(args):
     adjustments["adjustments"].append(new_adjustment)
 
     if save_adjustments(adjustments):
-        logger.info(f"Added adjustment for alarm ID {args.id}")
+        logger.info(f"[ALARMS] Added adjustment for alarm ID {args.id}")
         return True
     return False
 
@@ -189,13 +189,13 @@ def update_adjustment(args):
                     if current_time_off:
                         time_off = datetime.strptime(current_time_off, "%Y-%m-%d %H:%M:%S")
                         if new_time_on >= time_off:
-                            logger.error("Time On must be before Time Off")
+                            logger.error("[ALARMS] Time On must be before Time Off")
                             return False
 
                     adjustments["adjustments"][i]["time_on"] = args.time_on
                     current_time_on = args.time_on
                 except ValueError:
-                    logger.error("Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
+                    logger.error("[ALARMS] Invalid time_on format. Use YYYY-MM-DD HH:MM:SS")
                     return False
 
             # Update time_off if provided
@@ -207,12 +207,12 @@ def update_adjustment(args):
                     if current_time_on:
                         time_on = datetime.strptime(current_time_on, "%Y-%m-%d %H:%M:%S")
                         if new_time_off <= time_on:
-                            logger.error("Time Off must be after Time On")
+                            logger.error("[ALARMS] Time Off must be after Time On")
                             return False
 
                     adjustments["adjustments"][i]["time_off"] = args.time_off
                 except ValueError:
-                    logger.error("Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
+                    logger.error("[ALARMS] Invalid time_off format. Use YYYY-MM-DD HH:MM:SS")
                     return False
 
             # Update notes if provided
@@ -223,11 +223,11 @@ def update_adjustment(args):
             break
 
     if not found:
-        logger.error(f"No adjustment found with ID {args.id}")
+        logger.error(f"[ALARMS] No adjustment found with ID {args.id}")
         return False
 
     if save_adjustments(adjustments):
-        logger.info(f"Updated adjustment for alarm ID {args.id}")
+        logger.info(f"[ALARMS] Updated adjustment for alarm ID {args.id}")
         return True
     return False
 
@@ -243,11 +243,11 @@ def remove_adjustment(args):
     ]
 
     if len(adjustments["adjustments"]) == initial_count:
-        logger.error(f"No adjustment found with ID {args.id}")
+        logger.error(f"[ALARMS] No adjustment found with ID {args.id}")
         return False
 
     if save_adjustments(adjustments):
-        logger.info(f"Removed adjustment for alarm ID {args.id}")
+        logger.info(f"[ALARMS] Removed adjustment for alarm ID {args.id}")
         return True
     return False
 
@@ -266,7 +266,7 @@ def remove_adjustments_batch(ids: list[int]):
         return False
 
     if save_adjustments(adjustments):
-        logger.info(f"Removed {initial_count - len(adjustments['adjustments'])} adjustments")
+        logger.info(f"[ALARMS] Removed {initial_count - len(adjustments['adjustments'])} adjustments")
         return True
     return False
 
@@ -297,7 +297,7 @@ def update_adjustments_batch(ids: list[int], data: dict):
         return False
 
     if save_adjustments(adjustments):
-        logger.info(f"Updated {updates_count} adjustments")
+        logger.info(f"[ALARMS] Updated {updates_count} adjustments")
         return True
     return False
 

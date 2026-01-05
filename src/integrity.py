@@ -319,7 +319,7 @@ def check_met_integrity(df):
         # Log summary (Replicating original logging format roughly)
         if issue["type"] == "stuck_value":
             logger.warning(
-                f"STUCK VALUES: Station {issue['station_id']} | Sensor: {issue['sensor']} | "
+                f"[INTEGRITY] STUCK VALUES: Station {issue['station_id']} | Sensor: {issue['sensor']} | "
                 f"Count: {issue['count']} | "
                 f"Range: {issue['range_start']} to {issue['range_end']} | "
                 f"Sample: {issue['sample_value']} | Action: Nullify"
@@ -334,7 +334,7 @@ def check_met_integrity(df):
                     
         elif issue["type"] == "out_of_range":
              logger.warning(
-                f"ILLOGICAL VALUES: Station {issue['station_id']} | Column: {issue['column']} | "
+                f"[INTEGRITY] ILLOGICAL VALUES: Station {issue['station_id']} | Column: {issue['column']} | "
                 f"Count: {issue['count']} | "
                 f"Range: {issue['range_start']} to {issue['range_end']} | "
                 f"Bounds: [{issue['bounds'][0]}, {issue['bounds'][1]}] | Action: Nullify"

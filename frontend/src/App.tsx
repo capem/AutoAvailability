@@ -9,6 +9,7 @@ import Alarms from './pages/Alarms'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
 import FileManager from './pages/FileManager'
+import DataIntegrity from './pages/DataIntegrity'
 
 import './App.css'
 
@@ -35,6 +36,7 @@ function App() {
           <Route path="/alarms" element={<Alarms />} />
           <Route path="/logs" element={<Logs />} />
           <Route path="/files" element={<FileManager />} />
+          <Route path="/integrity" element={<DataIntegrity />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </AppShell.Main>

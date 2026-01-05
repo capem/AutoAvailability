@@ -190,3 +190,54 @@ export const searchFiles = async (params: SearchParams): Promise<FileItem[]> => 
     })
     return response.data
 }
+
+// Validation API
+export interface ValidationIssue {
+    type: string
+    station_id?: number | string
+    sensor?: string
+    column?: string
+    count: number
+    range_start: string
+    range_end: string
+    sample_value?: any
+    bounds?: [number, number]
+    // Completeness fields
+    completeness_pct?: number
+    total_expected?: number
+    missing_timestamps?: string[]
+}
+
+export interface FileValidationReport {
+    file: string
+    issues: ValidationIssue[]
+}
+
+export interface ValidationReport {
+    last_run: string | null
+    summary: {
+        total_files_scanned: number
+        total_issues: number
+        files_with_issues: number
+        stuck_values_count: number
+        out_of_range_count: number
+        completeness_issues_count?: number
+        system_issues_count?: number
+    }
+    details: FileValidationReport[]
+}
+
+export interface ValidationRequest {
+    dates?: string[]
+    end_date?: string
+}
+
+export const runValidation = async (request: ValidationRequest = {}) => {
+    const response = await api.post('/integrity/run', request)
+    return response.data
+}
+
+export const getValidationReport = async (): Promise<ValidationReport> => {
+    const response = await api.get('/integrity/report')
+    return response.data
+}

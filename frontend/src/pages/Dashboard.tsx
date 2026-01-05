@@ -27,10 +27,11 @@ import {
     IconCheck,
     IconX,
     IconPlayerStop,
+    IconShieldCheck,
 } from '@tabler/icons-react'
 import dayjs from 'dayjs'
 
-import { processData, abortProcessing, getProcessingStatus, getSystemStatus } from '../api'
+import { processData, abortProcessing, getProcessingStatus, getSystemStatus, runValidation } from '../api'
 import type { ProcessRequest } from '../api'
 
 const updateModes = [
@@ -51,8 +52,8 @@ export default function Dashboard() {
         queryFn: getProcessingStatus,
         refetchInterval: (query) => {
             const status = query.state.data?.status
-            // Poll fast when active, slow when idle
-            return status === 'running' || status === 'starting' ? 1000 : 30000
+            // Poll fast when active, stop when idle
+            return status === 'running' || status === 'starting' ? 1000 : false
         },
     })
 
@@ -81,6 +82,27 @@ export default function Dashboard() {
                 icon: <IconX size={16} />,
             })
         },
+    })
+
+    const validationMutation = useMutation({
+        mutationFn: runValidation,
+        onSuccess: () => {
+            notifications.show({
+                title: 'Validation Started',
+                message: 'Data validation scan has been initiated.',
+                color: 'blue',
+                icon: <IconShieldCheck size={16} />,
+            })
+            queryClient.invalidateQueries({ queryKey: ['processingStatus'] })
+        },
+        onError: (error: Error) => {
+            notifications.show({
+                title: 'Error',
+                message: error.message,
+                color: 'red',
+                icon: <IconX size={16} />,
+            })
+        }
     })
 
     const handleProcess = () => {
@@ -221,6 +243,29 @@ export default function Dashboard() {
                                 size="md"
                             >
                                 Run Processing
+                            </Button>
+                            <Button
+                                variant="outline"
+                                leftSection={<IconShieldCheck size={16} />}
+                                onClick={() => {
+                                    const validDates = selectedDates.filter(d => d !== null) as Date[]
+                                    let payload = {}
+
+                                    if (validDates.length > 0) {
+                                        const uniquePeriods = [...new Set(validDates.map(d => dayjs(d).format('YYYY-MM')))]
+                                        const maxDate = validDates.reduce((max, d) => d > max ? d : max, validDates[0])
+                                        payload = {
+                                            dates: uniquePeriods,
+                                            end_date: dayjs(maxDate).format('YYYY-MM-DD')
+                                        }
+                                    }
+                                    validationMutation.mutate(payload)
+                                }}
+                                loading={validationMutation.isPending}
+                                disabled={isProcessing}
+                                size="md"
+                            >
+                                Run Validation
                             </Button>
                             {isProcessing && (
                                 <Button

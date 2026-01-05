@@ -6,6 +6,7 @@ Exposes endpoints for data processing, alarm management, logs, and system status
 
 import os
 import multiprocessing
+import json
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -187,6 +188,22 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
             except Exception as e:
                 logger.error(f"Failed to send email reports: {e}")
                 # We don't stop the process if email fails, just log it
+            
+            # Step 5: Data Integrity Validation
+            status_dict["step"] = "Running Data Validation"
+            try:
+                from src import validation_runner
+                validation_periods = [p.strftime("%Y-%m") for p in period_range]
+                # Filter unique periods just in case
+                validation_periods = list(set(validation_periods))
+                
+                logger.info(f"Running scoped validation for periods: {validation_periods} up to {date_str}")
+                validation_runner.run_validation_scan(
+                    target_periods=validation_periods, 
+                    override_end_date=date_str
+                )
+            except Exception as e:
+                logger.error(f"Data validation failed: {e}")
         
         status_dict["status"] = "completed"
         status_dict["message"] = f"Successfully processed {len(dates)} date(s)"
@@ -201,6 +218,66 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
 
 
 # --- Endpoints ---
+
+class ValidationRequest(BaseModel):
+    dates: Optional[List[str]] = None
+    end_date: Optional[str] = None
+
+def run_validation_worker(status_dict, dates=None, end_date=None):
+    """Worker function for running validation scan."""
+    try:
+            from src import validation_runner
+            import time
+            # Short sleep to let status sync
+            time.sleep(1)
+            
+            status_dict["step"] = "Scanning MET Data"
+            validation_runner.run_validation_scan(target_periods=dates, override_end_date=end_date)
+            
+            status_dict["status"] = "completed"
+            status_dict["message"] = "Validation complete"
+            status_dict["step"] = None
+    except Exception as e:
+            status_dict["status"] = "error"
+            status_dict["message"] = str(e)
+            status_dict["step"] = None
+
+@router.post("/integrity/run")
+async def run_integrity_check(request: ValidationRequest = ValidationRequest()):
+    """Trigger a data integrity scan."""
+    global _current_process
+    _, status_dict = get_manager()
+    
+    if status_dict.get("status") == "running":
+        raise HTTPException(status_code=409, detail="Processing already in progress")
+        
+    status_dict["status"] = "running"
+    status_dict["message"] = "Running Data Validation..."
+    status_dict["step"] = "Initializing"
+    status_dict["date"] = None
+
+    _current_process = multiprocessing.Process(
+        target=run_validation_worker, 
+        args=(status_dict, request.dates, request.end_date)
+    )
+    _current_process.start()
+    return {"message": "Validation started"}
+
+
+@router.get("/integrity/report")
+async def get_integrity_report():
+    """Get the latest validation report."""
+    report_file = BASE_DATA_DIR / "validation_report.json"
+    if not report_file.exists():
+        # Return empty structure if no report exists
+        return {"last_run": None, "summary": {}, "details": []}
+    
+    try:
+        with open(report_file, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read report: {e}")
+
 
 @router.post("/process")
 async def process_dates(request: ProcessRequest):

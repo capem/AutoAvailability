@@ -83,16 +83,22 @@ def check_stuck_values(df, base_column, n_intervals=None, exclude_zero=False):
     return stuck_mask_sorted.reindex(df.index, fill_value=False)
 
 
-def check_met_integrity(df):
+def scan_met_integrity(df, period_start=None, period_end=None):
     """
-    Performs range and stuck checks on met data.
-    Modified values are logged and replaced with NaN.
+    Scans the dataframe for range and stuck checks on met data.
+    Also checks for completeness per station if period_start and period_end are provided.
+    Returns a list of issues found.
     """
     if df.empty:
-        return df
+        return []
 
-    df_clean = df.copy()
-
+    issues = []
+    
+    # --- Completeness Check ---
+    if period_start and period_end and 'StationId' in df.columns:
+        # Ensure start/end are datetimes
+        if isinstance(period_start, str):
+            period_start = pd.to_datetime(period_start)
     # Define checks: (column_base, (min_val, max_val))
     checks = [
         ("met_WindSpeedRot", config.MET_WINDSPEED_RANGE),
@@ -100,6 +106,107 @@ def check_met_integrity(df):
         ("met_Pressure", config.MET_PRESSURE_RANGE),
         ("met_TemperatureTen", config.MET_TEMPERATURE_RANGE),
     ]
+
+    issues = []
+    
+    # --- Completeness Check ---
+    if period_start and period_end and 'StationId' in df.columns:
+        if isinstance(period_start, str):
+            period_start = pd.to_datetime(period_start)
+        if isinstance(period_end, str):
+            period_end = pd.to_datetime(period_end)
+
+        # 0. Global System Connectivity (Row Existence)
+        # Checks if any row exists for a timestamp, regardless of sensor data
+        global_comp = check_completeness(df, period_start, period_end)
+        global_missing_set = set(global_comp['missing_timestamps'])
+        
+        if global_comp['completeness_percentage'] < 100.0:
+             missing_ts_list = global_comp['missing_timestamps']
+             truncated_missing = [ts.isoformat() for ts in missing_ts_list[:10]]
+             if len(missing_ts_list) > 10:
+                 truncated_missing.append(f"... and {len(missing_ts_list) - 10} more")
+
+             issues.append({
+                "type": "system_completeness",
+                "station_id": "ALL",
+                "sensor": "Global Connectivity",
+                "count": global_comp['missing_count'],
+                "total_expected": global_comp['total_expected'],
+                "completeness_pct": global_comp['completeness_percentage'],
+                "missing_timestamps": truncated_missing,
+                "range_start": period_start.isoformat(),
+                "range_end": period_end.isoformat()
+             })
+
+        # 1. System-wide Completeness per Sensor (Union of all stations)
+        # Checks if *at least one* station has data for each sensor
+        # EXCLUDING intervals already covered by Global Connectivity gaps
+        for (sensor, _) in checks:
+             col_mean = f"{sensor}_mean"
+             if col_mean not in df.columns:
+                 continue
+                 
+             # Filter to valid rows for this sensor
+             valid_sensor_df = df[df[col_mean].notna()]
+             
+             system_comp = check_completeness(valid_sensor_df, period_start, period_end)
+             sensor_missing_set = set(system_comp['missing_timestamps'])
+             
+             # Deduplicate: Remove timestamps that are already globally missing
+             true_sensor_gaps = sorted(list(sensor_missing_set - global_missing_set))
+             
+             if len(true_sensor_gaps) > 0:
+                 # Recalculate stats based on true gaps
+                 missing_count = len(true_sensor_gaps)
+                 # Completeness here is a bit tricky to define if we exclude global gaps
+                 # We can define it as: (Total Expected - True Gaps) / Total Expected * 100
+                 # Or just report it relative to "Connected Time".
+                 # For simplicity/consistency, let's keep it relative to Total Expected, 
+                 # but specific to this sensor's *additional* failure.
+                 
+                 comp_pct = round(((system_comp['total_expected'] - missing_count) / system_comp['total_expected']) * 100, 2)
+
+                 truncated_missing = [ts.isoformat() for ts in true_sensor_gaps[:10]]
+                 if len(true_sensor_gaps) > 10:
+                     truncated_missing.append(f"... and {len(true_sensor_gaps) - 10} more")
+
+                 issues.append({
+                    "type": "system_completeness",
+                    "station_id": "ALL",
+                    "sensor": sensor,
+                    "count": missing_count,
+                    "total_expected": system_comp['total_expected'],
+                    "completeness_pct": comp_pct,
+                    "missing_timestamps": truncated_missing,
+                    "range_start": period_start.isoformat(),
+                    "range_end": period_end.isoformat()
+                 })
+
+        # 2. Per-Station Completeness
+        for station_id in df['StationId'].unique():
+            station_df = df[df['StationId'] == station_id]
+            
+            # Reuse existing check_completeness
+            comp_result = check_completeness(station_df, period_start, period_end)
+            
+            if comp_result['completeness_percentage'] < 100.0:
+                 # Truncate missing timestamps for report
+                 missing_ts_list = comp_result['missing_timestamps']
+                 truncated_missing = [ts.isoformat() for ts in missing_ts_list[:10]]
+                 if len(missing_ts_list) > 10:
+                     truncated_missing.append(f"... and {len(missing_ts_list) - 10} more")
+
+                 issues.append({
+                    "type": "completeness",
+                    "station_id": int(station_id),
+                    "count": comp_result['missing_count'],
+                    "total_expected": comp_result['total_expected'],
+                    "completeness_pct": comp_result['completeness_percentage'],
+                    "missing_timestamps": truncated_missing,
+                    "range_start": period_start.isoformat(),
+                    "range_end": period_end.isoformat()
+                 })
 
     stats_to_check = ["mean", "min", "max"]
 
@@ -110,45 +217,87 @@ def check_met_integrity(df):
         if stuck_mask.any():
             stuck_rows = df[stuck_mask]
             
-            # Log summary
-            logger.warning(
-                f"STUCK VALUES: Station {stuck_rows['StationId'].iloc[0]} | Sensor: {base_col} | "
-                f"Count: {len(stuck_rows)} | "
-                f"Range: {stuck_rows['TimeStamp'].min()} to {stuck_rows['TimeStamp'].max()} | "
-                f"Sample: {stuck_rows.iloc[0].get(f'{base_col}_mean', 'N/A')} | Action: Nullify"
-            )
-
-            # Nullify all related stat columns
-            for stat in ["mean", "min", "max", "stddev"]:
-                col = f"{base_col}_{stat}"
-                if col in df_clean.columns:
-                    df_clean.loc[stuck_mask, col] = np.nan
+            # Record issue
+            # Let's iterate over unique stations in stuck_rows to be more accurate in the report
+            for station_id in stuck_rows['StationId'].unique():
+                 station_stuck = stuck_rows[stuck_rows['StationId'] == station_id]
+                 issues.append({
+                    "type": "stuck_value",
+                    "station_id": int(station_id),
+                    "sensor": base_col,
+                    "count": len(station_stuck),
+                    "range_start": station_stuck['TimeStamp'].min(),
+                    "range_end": station_stuck['TimeStamp'].max(),
+                    "sample_value": station_stuck.iloc[0].get(f'{base_col}_mean', 'N/A'),
+                    "indices": station_stuck.index.tolist()
+                 })
 
         # --- Range Checks ---
         for stat in stats_to_check:
             col = f"{base_col}_{stat}"
-            if col not in df_clean.columns:
+            if col not in df.columns:
                 continue
 
             # Identify values outside [v_min, v_max]
-            illogical_mask = df_clean[col].between(v_min, v_max, inclusive="both")
-            # We want to finding outliers, so invert (~)
-            # Note: between() returns True for valid, False for outliers or NaN. 
-            # We must be careful not to flag NaNs as illogical here (they are just missing).
-            # So: Invalid if NOT NaN AND NOT BETWEEN.
-            is_outlier = (df_clean[col].notna()) & (~illogical_mask)
+            illogical_mask = df[col].between(v_min, v_max, inclusive="both")
+            is_outlier = (df[col].notna()) & (~illogical_mask)
 
             if is_outlier.any():
                 outlier_rows = df[is_outlier]
                 
-                logger.warning(
-                    f"ILLOGICAL VALUES: Station {outlier_rows['StationId'].iloc[0]} | Column: {col} | "
-                    f"Count: {len(outlier_rows)} | "
-                    f"Range: {outlier_rows['TimeStamp'].min()} to {outlier_rows['TimeStamp'].max()} | "
-                    f"Bounds: [{v_min}, {v_max}] | Action: Nullify"
-                )
-                
-                df_clean.loc[is_outlier, col] = np.nan
+                # Similar grouping for outliers
+                for station_id in outlier_rows['StationId'].unique():
+                    station_outliers = outlier_rows[outlier_rows['StationId'] == station_id]
+                    issues.append({
+                        "type": "out_of_range",
+                        "station_id": int(station_id),
+                        "column": col,
+                        "count": len(station_outliers),
+                        "range_start": station_outliers['TimeStamp'].min(),
+                        "range_end": station_outliers['TimeStamp'].max(),
+                        "bounds": (v_min, v_max),
+                        "indices": station_outliers.index.tolist()
+                    })
+
+    return issues
+
+
+def check_met_integrity(df):
+    """
+    Performs range and stuck checks on met data.
+    Modified values are logged and replaced with NaN.
+    """
+    if df.empty:
+        return df
+
+    df_clean = df.copy()
+    issues = scan_met_integrity(df)
+    
+    for issue in issues:
+        # Log summary (Replicating original logging format roughly)
+        if issue["type"] == "stuck_value":
+            logger.warning(
+                f"STUCK VALUES: Station {issue['station_id']} | Sensor: {issue['sensor']} | "
+                f"Count: {issue['count']} | "
+                f"Range: {issue['range_start']} to {issue['range_end']} | "
+                f"Sample: {issue['sample_value']} | Action: Nullify"
+            )
+            
+            # Nullify all related stat columns
+            base_col = issue['sensor']
+            for stat in ["mean", "min", "max", "stddev"]:
+                col = f"{base_col}_{stat}"
+                if col in df_clean.columns:
+                    df_clean.loc[issue['indices'], col] = np.nan
+                    
+        elif issue["type"] == "out_of_range":
+             logger.warning(
+                f"ILLOGICAL VALUES: Station {issue['station_id']} | Column: {issue['column']} | "
+                f"Count: {issue['count']} | "
+                f"Range: {issue['range_start']} to {issue['range_end']} | "
+                f"Bounds: [{issue['bounds'][0]}, {issue['bounds'][1]}] | Action: Nullify"
+            )
+             df_clean.loc[issue['indices'], issue['column']] = np.nan
 
     return df_clean
 

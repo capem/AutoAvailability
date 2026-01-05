@@ -8,6 +8,7 @@ import {
     IconSun,
     IconMoon,
     IconFolder,
+    IconShieldCheck,
 } from '@tabler/icons-react'
 import { useQuery } from '@tanstack/react-query'
 import { getProcessingStatus } from '../api'
@@ -16,6 +17,7 @@ const navItems = [
     { label: 'Dashboard', icon: IconDashboard, path: '/' },
     { label: 'Alarm Adjustments', icon: IconBell, path: '/alarms' },
     { label: 'Files', icon: IconFolder, path: '/files' },
+    { label: 'Data Integrity Report', icon: IconShieldCheck, path: '/integrity' },
     { label: 'Logs', icon: IconFileText, path: '/logs' },
     { label: 'Settings', icon: IconSettings, path: '/settings' },
 ]
@@ -30,8 +32,8 @@ export default function Navbar() {
         queryFn: getProcessingStatus,
         refetchInterval: (query) => {
             const status = query.state.data?.status
-            // Poll fast when active, slow when idle
-            return status === 'running' || status === 'starting' ? 2000 : 30000
+            // Poll fast when active, stop when idle
+            return status === 'running' || status === 'starting' ? 2000 : false
         },
     })
 

@@ -616,6 +616,102 @@ async def system_status():
     }
 
 
+@router.post("/test/database")
+async def test_database_connection():
+    """Test database connection by attempting to connect and run a simple query."""
+    try:
+        import pyodbc
+        
+        db_config = config.DB_CONFIG
+        
+        # Build connection string
+        conn_str = (
+            f"DRIVER={db_config['driver']};"
+            f"SERVER={db_config['server']};"
+            f"DATABASE={db_config['database']};"
+            f"UID={db_config['username']};"
+            f"PWD={db_config['password']};"
+            f"TrustServerCertificate=yes;"
+        )
+        
+        # Attempt connection with timeout
+        connection = pyodbc.connect(conn_str, timeout=10)
+        cursor = connection.cursor()
+        
+        # Run a simple test query
+        cursor.execute("SELECT 1 AS test")
+        result = cursor.fetchone()
+        
+        cursor.close()
+        connection.close()
+        
+        return {
+            "success": True,
+            "message": "Database connection successful",
+            "details": {
+                "server": db_config['server'],
+                "database": db_config['database'],
+                "username": db_config['username'],
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[API] Database connection test failed: {e}")
+        return {
+            "success": False,
+            "message": f"Database connection failed: {str(e)}",
+            "details": {
+                "server": config.DB_CONFIG.get('server', 'N/A'),
+                "database": config.DB_CONFIG.get('database', 'N/A'),
+                "username": config.DB_CONFIG.get('username', 'N/A'),
+            }
+        }
+
+
+@router.post("/test/email")
+async def test_email_configuration():
+    """Test email configuration by checking SMTP connection (without sending email)."""
+    try:
+        import smtplib
+        
+        email_config = config.EMAIL_CONFIG
+        
+        # Create SMTP connection
+        server = smtplib.SMTP(email_config['smtp_host'], email_config['smtp_port'], timeout=10)
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        
+        # Attempt login
+        server.login(email_config['sender_email'], email_config['password'])
+        
+        server.quit()
+        
+        return {
+            "success": True,
+            "message": "Email configuration valid - SMTP connection successful",
+            "details": {
+                "sender": email_config['sender_email'],
+                "smtp_host": email_config['smtp_host'],
+                "smtp_port": email_config['smtp_port'],
+                "default_recipient": email_config['receiver_default'],
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[API] Email configuration test failed: {e}")
+        return {
+            "success": False,
+            "message": f"Email configuration test failed: {str(e)}",
+            "details": {
+                "sender": config.EMAIL_CONFIG.get('sender_email', 'N/A'),
+                "smtp_host": config.EMAIL_CONFIG.get('smtp_host', 'N/A'),
+                "smtp_port": config.EMAIL_CONFIG.get('smtp_port', 'N/A'),
+                "default_recipient": config.EMAIL_CONFIG.get('receiver_default', 'N/A'),
+            }
+        }
+
+
 # --- File Manager Endpoints ---
 
 @router.get("/fs/list")
@@ -873,3 +969,32 @@ async def trigger_scheduler():
     if result["status"] == "error":
         raise HTTPException(status_code=500, detail=result["message"])
     return result
+
+
+# --- Application Settings Endpoints ---
+
+class AppSettings(BaseModel):
+    email_enabled: bool
+    default_update_mode: str
+
+@router.get("/settings")
+async def get_app_settings():
+    """Get current application settings."""
+    from src import settings_manager
+    return settings_manager.load_settings()
+
+@router.post("/settings")
+async def update_app_settings(settings: AppSettings):
+    """Update application settings."""
+    from src import settings_manager
+    
+    # Validate update mode
+    valid_modes = ["append", "check", "force-overwrite", "process-existing", "process-existing-except-alarms"]
+    if settings.default_update_mode not in valid_modes:
+        raise HTTPException(status_code=400, detail=f"Invalid update mode. Must be one of: {valid_modes}")
+        
+    try:
+        settings_manager.save_settings(settings.dict())
+        return settings.dict()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

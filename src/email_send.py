@@ -59,6 +59,12 @@ def send_email(
     if email_password is None:
         email_password = config.EMAIL_CONFIG["password"]
 
+    # Check global email setting
+    from src import settings_manager
+    if not settings_manager.get_setting("email_enabled", True):
+        logger.warning("[EMAIL] Email sending is disabled in settings. Skipping email.")
+        return
+
     # Apply the style to your dataframe and convert to HTML
     html = style_dataframe(df)
 

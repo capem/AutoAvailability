@@ -31,7 +31,7 @@ import {
 } from '@tabler/icons-react'
 import dayjs from 'dayjs'
 
-import { processData, abortProcessing, getProcessingStatus, getSystemStatus, runValidation } from '../api'
+import { processData, abortProcessing, getProcessingStatus, getSystemStatus, runValidation, getAppSettings } from '../api'
 import type { ProcessRequest } from '../api'
 
 const updateModes = [
@@ -46,6 +46,8 @@ export default function Dashboard() {
     const queryClient = useQueryClient()
     const [selectedDates, setSelectedDates] = useState<(Date | null)[]>([dayjs().subtract(1, 'day').toDate()])
     const [updateMode, setUpdateMode] = useState<string>('append')
+    // Flag to track if we've synced with default settings
+    const [settingsSynced, setSettingsSynced] = useState(false)
 
     const { data: processingStatus } = useQuery({
         queryKey: ['processingStatus'],
@@ -62,6 +64,18 @@ export default function Dashboard() {
         queryFn: getSystemStatus,
         refetchInterval: 10000,
     })
+
+    const { data: appSettings } = useQuery({
+        queryKey: ['appSettings'],
+        queryFn: getAppSettings,
+        refetchOnWindowFocus: false,
+    })
+
+    // Load default update mode from settings when available
+    if (appSettings && !settingsSynced) {
+        setUpdateMode(appSettings.default_update_mode)
+        setSettingsSynced(true)
+    }
 
     const processMutation = useMutation({
         mutationFn: processData,

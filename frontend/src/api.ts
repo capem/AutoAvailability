@@ -278,3 +278,36 @@ export const triggerScheduler = async () => {
     const response = await api.post('/scheduler/trigger')
     return response.data
 }
+
+// Connection Test API
+export interface TestResult {
+    success: boolean
+    message: string
+    details: Record<string, string | number>
+}
+
+export const testDatabaseConnection = async (): Promise<TestResult> => {
+    const response = await api.post('/test/database')
+    return response.data
+}
+
+export const testEmailConfiguration = async (): Promise<TestResult> => {
+    const response = await api.post('/test/email')
+    return response.data
+}
+
+// App Settings API
+export interface AppSettings {
+    email_enabled: boolean
+    default_update_mode: string
+}
+
+export const getAppSettings = async (): Promise<AppSettings> => {
+    const response = await api.get('/settings')
+    return response.data
+}
+
+export const updateAppSettings = async (settings: AppSettings): Promise<AppSettings> => {
+    const response = await api.post('/settings', settings)
+    return response.data
+}

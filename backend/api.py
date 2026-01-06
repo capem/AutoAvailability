@@ -222,9 +222,12 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
 
 class ValidationRequest(BaseModel):
     dates: Optional[List[str]] = None
+    start_date: Optional[str] = None
     end_date: Optional[str] = None
+    stuck_intervals: Optional[int] = None
+    exclude_zero: Optional[bool] = False
 
-def run_validation_worker(status_dict, dates=None, end_date=None):
+def run_validation_worker(status_dict, dates=None, start_date=None, end_date=None, stuck_intervals=None, exclude_zero=False):
     """Worker function for running validation scan."""
     try:
             from src import validation_runner
@@ -233,7 +236,13 @@ def run_validation_worker(status_dict, dates=None, end_date=None):
             time.sleep(1)
             
             status_dict["step"] = "Scanning MET Data"
-            validation_runner.run_validation_scan(target_periods=dates, override_end_date=end_date)
+            validation_runner.run_validation_scan(
+                target_periods=dates, 
+                override_start_date=start_date,
+                override_end_date=end_date,
+                stuck_intervals=stuck_intervals,
+                exclude_zero=exclude_zero
+            )
             
             status_dict["status"] = "completed"
             status_dict["message"] = "Validation complete"
@@ -242,6 +251,21 @@ def run_validation_worker(status_dict, dates=None, end_date=None):
             status_dict["status"] = "error"
             status_dict["message"] = str(e)
             status_dict["step"] = None
+
+@router.get("/integrity/rules")
+async def get_integrity_rules():
+    """Get current data integrity validation rules and thresholds."""
+    return {
+        "ranges": {
+            "WindSpeed": config.MET_WINDSPEED_RANGE,
+            "WindDirection": config.MET_WINDDIRECTION_RANGE,
+            "Pressure": config.MET_PRESSURE_RANGE,
+            "Temperature": config.MET_TEMPERATURE_RANGE,
+        },
+        "defaults": {
+            "stuck_intervals": config.MET_STUCK_INTERVALS
+        }
+    }
 
 @router.post("/integrity/run")
 async def run_integrity_check(request: ValidationRequest = ValidationRequest()):
@@ -259,7 +283,7 @@ async def run_integrity_check(request: ValidationRequest = ValidationRequest()):
 
     _current_process = multiprocessing.Process(
         target=run_validation_worker, 
-        args=(status_dict, request.dates, request.end_date)
+        args=(status_dict, request.dates, request.start_date, request.end_date, request.stuck_intervals, request.exclude_zero)
     )
     _current_process.start()
     return {"message": "Validation started"}

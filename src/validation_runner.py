@@ -26,12 +26,15 @@ class CustomJSONEncoder(json.JSONEncoder):
              return None
         return super().default(obj)
         
-def run_validation_scan(target_periods=None, override_end_date=None):
+def run_validation_scan(target_periods=None, override_start_date=None, override_end_date=None, stuck_intervals=None, exclude_zero=False):
     """
     Scans MET data files and generates a validation report.
     Args:
         target_periods (list): Optional list of 'YYYY-MM' strings to filter files.
+        override_start_date (str): Optional 'YYYY-MM-DD' date to start the check period.
         override_end_date (str): Optional 'YYYY-MM-DD' date to cap the check period.
+        stuck_intervals (int): Optional override for stuck value intervals.
+        exclude_zero (bool): Whether to exclude zero values from stuck checks.
     """
     logger.info("[VALIDATE] Starting full data validation scan...")
     
@@ -66,19 +69,37 @@ def run_validation_scan(target_periods=None, override_end_date=None):
             if any(f.name.startswith(p) for p in target_periods):
                 files.append(f)
     else:
-        files = all_files
+        # If no target periods but date range provided, filter files by range
+        if override_start_date or override_end_date:
+             # Basic file filtering based on YYYY-MM in filename
+             start_ym = override_start_date[:7] if override_start_date else "0000-00"
+             end_ym = override_end_date[:7] if override_end_date else "9999-99"
+             
+             for f in all_files:
+                 file_ym = f.name[:7]
+                 if start_ym <= file_ym <= end_ym:
+                     files.append(f)
+        else:
+            files = all_files
 
     report["summary"]["total_files_scanned"] = len(files)
     
     files_with_issues = 0
     
-    # Parse override date once
-    parsed_override_end = None
+    # Parse dates once
+    parsed_start = None
+    if override_start_date:
+        try:
+             parsed_start = pd.to_datetime(override_start_date)
+        except:
+             logger.warning(f"[VALIDATE] Invalid override start date: {override_start_date}")
+
+    parsed_end = None
     if override_end_date:
         try:
-            parsed_override_end = pd.to_datetime(override_end_date)
+            parsed_end = pd.to_datetime(override_end_date)
             # Make it end of day
-            parsed_override_end = parsed_override_end.replace(hour=23, minute=59, second=59)
+            parsed_end = parsed_end.replace(hour=23, minute=59, second=59)
         except:
              logger.warning(f"[VALIDATE] Invalid override end date: {override_end_date}")
 
@@ -94,30 +115,45 @@ def run_validation_scan(target_periods=None, override_end_date=None):
                 next_month = period_start.replace(day=1) + pd.DateOffset(months=1)
                 month_end = next_month - pd.Timedelta(seconds=1)
                 
-                # Determine effective end date
-                # Start with month end
-                limit_date = month_end
+                # Determine effective range
+                actual_start = period_start
+                actual_end = min(month_end, datetime.now())
                 
-                # If user provided override, clamp to that
-                if parsed_override_end:
-                    limit_date = min(limit_date, parsed_override_end)
-                    
-                # Always cap at now() to avoid future
-                period_end = min(limit_date, datetime.now())
+                # Apply overrides
+                if parsed_start:
+                    actual_start = max(actual_start, parsed_start)
+                
+                if parsed_end:
+                     actual_end = min(actual_end, parsed_end)
+                
+                # If range is invalid (start > end), skip file
+                if actual_start > actual_end:
+                    logger.info(f"[VALIDATE] File {file_path.name} outside of requested range. Skipping.")
+                    continue
 
             except ValueError:
                 logger.warning(f"[VALIDATE] Could not parse period from filename {file_path.name}. Skipping completeness check.")
-                period_start = None
-                period_end = None
+                actual_start = None
+                actual_end = None
 
             df = pd.read_csv(file_path)
             
             # Simple timestamp conversion if needed for sorting/reporting dates
             if 'TimeStamp' in df.columns:
                 df['TimeStamp'] = pd.to_datetime(df['TimeStamp'], errors='coerce')
+                
+                # Filter dataframe rows by date if needed
+                if actual_start and actual_end:
+                     df = df[(df['TimeStamp'] >= actual_start) & (df['TimeStamp'] <= actual_end)]
 
             # Run integrity checks
-            issues = integrity.scan_met_integrity(df, period_start, period_end)
+            issues = integrity.scan_met_integrity(
+                df, 
+                period_start=actual_start, 
+                period_end=actual_end,
+                stuck_intervals=stuck_intervals,
+                exclude_zero=exclude_zero
+            )
             
             if issues:
                 files_with_issues += 1

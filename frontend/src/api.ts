@@ -229,9 +229,13 @@ export interface ValidationReport {
     details: FileValidationReport[]
 }
 
+
 export interface ValidationRequest {
     dates?: string[]
+    start_date?: string
     end_date?: string
+    stuck_intervals?: number
+    exclude_zero?: boolean
 }
 
 export const runValidation = async (request: ValidationRequest = {}) => {
@@ -241,6 +245,18 @@ export const runValidation = async (request: ValidationRequest = {}) => {
 
 export const getValidationReport = async (): Promise<ValidationReport> => {
     const response = await api.get('/integrity/report')
+    return response.data
+}
+
+export interface IntegrityRules {
+    ranges: Record<string, [number, number]>
+    defaults: {
+        stuck_intervals: number
+    }
+}
+
+export const getValidationRules = async (): Promise<IntegrityRules> => {
+    const response = await api.get('/integrity/rules')
     return response.data
 }
 

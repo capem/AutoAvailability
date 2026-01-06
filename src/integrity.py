@@ -83,7 +83,7 @@ def check_stuck_values(df, base_column, n_intervals=None, exclude_zero=False):
     return stuck_mask_sorted.reindex(df.index, fill_value=False)
 
 
-def scan_met_integrity(df, period_start=None, period_end=None):
+def scan_met_integrity(df, period_start=None, period_end=None, stuck_intervals=None, exclude_zero=False):
     """
     Scans the dataframe for range and stuck checks on met data.
     Also checks for completeness per station if period_start and period_end are provided.
@@ -91,21 +91,6 @@ def scan_met_integrity(df, period_start=None, period_end=None):
     """
     if df.empty:
         return []
-
-    issues = []
-    
-    # --- Completeness Check ---
-    if period_start and period_end and 'StationId' in df.columns:
-        # Ensure start/end are datetimes
-        if isinstance(period_start, str):
-            period_start = pd.to_datetime(period_start)
-    # Define checks: (column_base, (min_val, max_val))
-    checks = [
-        ("met_WindSpeedRot", config.MET_WINDSPEED_RANGE),
-        ("met_WinddirectionRot", config.MET_WINDDIRECTION_RANGE),
-        ("met_Pressure", config.MET_PRESSURE_RANGE),
-        ("met_TemperatureTen", config.MET_TEMPERATURE_RANGE),
-    ]
 
     issues = []
     
@@ -139,6 +124,16 @@ def scan_met_integrity(df, period_start=None, period_end=None):
                 "range_end": period_end.isoformat()
              })
 
+    # Define checks: (column_base, (min_val, max_val))
+    checks = [
+        ("met_WindSpeedRot", config.MET_WINDSPEED_RANGE),
+        ("met_WinddirectionRot", config.MET_WINDDIRECTION_RANGE),
+        ("met_Pressure", config.MET_PRESSURE_RANGE),
+        ("met_TemperatureTen", config.MET_TEMPERATURE_RANGE),
+    ]
+
+    # --- Completeness Check Continued (Sensor & Station specific) ---
+    if period_start and period_end and 'StationId' in df.columns:
         # 1. System-wide Completeness per Sensor (Union of all stations)
         # Checks if *at least one* station has data for each sensor
         # EXCLUDING intervals already covered by Global Connectivity gaps
@@ -254,7 +249,7 @@ def scan_met_integrity(df, period_start=None, period_end=None):
 
     for base_col, (v_min, v_max) in checks:
         # --- Stuck Value Checks ---
-        stuck_mask = check_stuck_values(df, base_col)
+        stuck_mask = check_stuck_values(df, base_col, n_intervals=stuck_intervals, exclude_zero=exclude_zero)
 
         if stuck_mask.any():
             stuck_rows = df[stuck_mask]

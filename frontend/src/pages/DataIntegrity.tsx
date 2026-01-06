@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
     Title,
     Text,
@@ -13,20 +13,38 @@ import {
     Accordion,
     Table,
     Loader,
-    ScrollArea
+    ScrollArea,
+    Drawer,
+    NumberInput,
+    Checkbox,
+    SimpleGrid,
+    Code,
+    ActionIcon,
+    Tooltip,
+    Tabs
 } from '@mantine/core'
+import { DatePickerInput } from '@mantine/dates'
 import {
     IconAlertCircle,
     IconCheck,
     IconRefresh,
-    IconExclamationCircle
+    IconExclamationCircle,
+    IconSettings,
+    IconCalendar
 } from '@tabler/icons-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getValidationReport, runValidation, getProcessingStatus } from '../api'
+import { getValidationReport, runValidation, getProcessingStatus, getValidationRules } from '../api'
+import type { ValidationRequest } from '../api'
 
 export default function DataIntegrity() {
     const queryClient = useQueryClient()
     const prevStatusRef = useRef<string | undefined>(undefined)
+
+    // UI State
+    const [settingsOpen, setSettingsOpen] = useState(false)
+    const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null])
+    const [stuckIntervals, setStuckIntervals] = useState<number | undefined>(undefined)
+    const [excludeZero, setExcludeZero] = useState(false)
 
     const { data: report, isLoading } = useQuery({
         queryKey: ['validationReport'],
@@ -43,6 +61,18 @@ export default function DataIntegrity() {
         },
     })
 
+    const { data: rules } = useQuery({
+        queryKey: ['validationRules'],
+        queryFn: getValidationRules,
+    })
+
+    // Initialize defaults from rules when loaded
+    useEffect(() => {
+        if (rules && stuckIntervals === undefined) {
+            setStuckIntervals(rules.defaults.stuck_intervals)
+        }
+    }, [rules, stuckIntervals])
+
     // Auto-refresh report when processing completes
     useEffect(() => {
         if (prevStatusRef.current === 'running' && status?.status === 'completed') {
@@ -52,17 +82,36 @@ export default function DataIntegrity() {
     }, [status?.status, queryClient])
 
     const runValidationMutation = useMutation({
-        mutationFn: runValidation,
+        mutationFn: (req: ValidationRequest) => runValidation(req),
         onSuccess: () => {
             // Invalidate status to kickstart polling (transition from idle -> running)
             queryClient.invalidateQueries({ queryKey: ['processingStatus'] })
             // Invalidate report (though it won't update until job finishes)
             queryClient.invalidateQueries({ queryKey: ['validationReport'] })
+            setSettingsOpen(false)
         }
     })
 
     const handleRunValidation = () => {
-        runValidationMutation.mutate({})
+        const request: ValidationRequest = {
+            stuck_intervals: stuckIntervals,
+            exclude_zero: excludeZero,
+        }
+
+        if (dateRange[0]) {
+            // Adjust to local date string YYYY-MM-DD
+            const offset = dateRange[0].getTimezoneOffset()
+            const start = new Date(dateRange[0].getTime() - (offset * 60 * 1000))
+            request.start_date = start.toISOString().split('T')[0]
+        }
+
+        if (dateRange[1]) {
+            const offset = dateRange[1].getTimezoneOffset()
+            const end = new Date(dateRange[1].getTime() - (offset * 60 * 1000))
+            request.end_date = end.toISOString().split('T')[0]
+        }
+
+        runValidationMutation.mutate(request)
     }
 
     if (isLoading) return <Loader />
@@ -71,12 +120,173 @@ export default function DataIntegrity() {
     const hasIssues = (report?.summary?.total_issues ?? 0) > 0
     const isRunning = status?.status === 'running'
 
-    // Check if the current/last process was validation related (simple heuristic or assumed global)
-    // The user requested a specific "completed" badge style for the result. 
-    // We'll show the status badge if running or recently completed.
-
     return (
         <Stack gap="lg" style={{ height: '100%' }}>
+            <Drawer
+                opened={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                title="Validation Settings"
+                position="right"
+                size="lg" // Increased size for better layout
+                padding="md"
+            >
+                <Tabs defaultValue="config">
+                    <Tabs.List grow>
+                        <Tabs.Tab value="config" leftSection={<IconSettings size={16} />}>
+                            Configuration
+                        </Tabs.Tab>
+                        <Tabs.Tab value="reference" leftSection={<IconExclamationCircle size={16} />}>
+                            Rules & Info
+                        </Tabs.Tab>
+                    </Tabs.List>
+
+                    <Tabs.Panel value="config">
+                        <Stack gap="xl" pt="xl">
+                            <Card withBorder padding="md" radius="md">
+                                <Stack gap="md">
+                                    <Group justify="space-between">
+                                        <Group gap="xs">
+                                            <IconCalendar size={18} color="gray" />
+                                            <Text fw={600}>Scan Scope</Text>
+                                        </Group>
+                                    </Group>
+                                    <Text size="sm" c="dimmed">
+                                        Define the time period to analyze. Leave empty to scan all available data.
+                                    </Text>
+                                    <DatePickerInput
+                                        type="range"
+                                        placeholder="Select date range"
+                                        value={dateRange}
+                                        onChange={(value) => setDateRange(value as [Date | null, Date | null])}
+                                        clearable
+                                    />
+                                </Stack>
+                            </Card>
+
+                            <Card withBorder padding="md" radius="md">
+                                <Stack gap="md">
+                                    <Group gap="xs">
+                                        <IconAlertCircle size={18} color="gray" />
+                                        <Text fw={600}>Sensitivity Parameters</Text>
+                                    </Group>
+
+                                    <Stack gap="xs">
+                                        <Text size="sm" fw={500}>Stuck Value Detection</Text>
+                                        <Text size="xs" c="dimmed" mb="xs">
+                                            Adjust how aggressive the stuck value detection should be.
+                                        </Text>
+
+                                        <SimpleGrid cols={2}>
+                                            <NumberInput
+                                                label="Stuck Interval Threshold"
+                                                description="Consecutive identical readings required to flag."
+                                                value={stuckIntervals}
+                                                onChange={(val) => setStuckIntervals(Number(val))}
+                                                min={2}
+                                                max={100}
+                                            />
+                                            <Stack justify="center" pt="xs">
+                                                <Checkbox
+                                                    label="Exclude Zero Values"
+                                                    description="Ignore 0.0 sequences (e.g. calm wind)"
+                                                    checked={excludeZero}
+                                                    onChange={(event) => setExcludeZero(event.currentTarget.checked)}
+                                                />
+                                            </Stack>
+                                        </SimpleGrid>
+                                    </Stack>
+                                </Stack>
+                            </Card>
+
+                            <Button
+                                size="md"
+                                onClick={handleRunValidation}
+                                loading={isRunning || runValidationMutation.isPending}
+                                disabled={isRunning}
+                            >
+                                Run Validation Scan
+                            </Button>
+                        </Stack>
+                    </Tabs.Panel>
+
+                    <Tabs.Panel value="reference">
+                        <Stack gap="xl" pt="xl">
+                            <Stack gap="xs">
+                                <Text fw={600} size="sm" tt="uppercase" c="dimmed">Immutable Rules</Text>
+                                <Card withBorder>
+                                    <Text size="sm" mb="md">
+                                        The following physical limits are hardcoded for quality control. Values outside these ranges are flagged as <b>Out of Range</b>.
+                                    </Text>
+                                    {rules && (
+                                        <Table highlightOnHover>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th>Sensor</Table.Th>
+                                                    <Table.Th>Valid Range</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {Object.entries(rules.ranges).map(([sensor, range]) => (
+                                                    <Table.Tr key={sensor}>
+                                                        <Table.Td fw={500}>{sensor}</Table.Td>
+                                                        <Table.Td><Code>{`[${range[0]}, ${range[1]}]`}</Code></Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                    )}
+                                </Card>
+                            </Stack>
+
+                            <Stack gap="xs">
+                                <Text fw={600} size="sm" tt="uppercase" c="dimmed">Methodology</Text>
+                                <Accordion variant="separated" defaultValue="completeness">
+                                    <Accordion.Item value="completeness">
+                                        <Accordion.Control icon={<IconCheck size={18} color="teal" />}>Completeness Checks</Accordion.Control>
+                                        <Accordion.Panel>
+                                            <Stack gap="sm">
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="red" size="sm" variant="dot">System Outages</Badge>
+                                                    <Text size="sm">Times where NO stations reported data.</Text>
+                                                </Group>
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="orange" size="sm" variant="dot">Station Gaps</Badge>
+                                                    <Text size="sm">Times missing for a specific station.</Text>
+                                                </Group>
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="cyan" size="sm" variant="dot">Sensor Gaps</Badge>
+                                                    <Text size="sm">Specific sensors missing data (NaN) while station is connected.</Text>
+                                                </Group>
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="yellow" size="sm" variant="dot">Empty Rows</Badge>
+                                                    <Text size="sm">Rows present but all sensor values are NaN.</Text>
+                                                </Group>
+                                            </Stack>
+                                        </Accordion.Panel>
+                                    </Accordion.Item>
+
+                                    <Accordion.Item value="integrity">
+                                        <Accordion.Control icon={<IconAlertCircle size={18} color="orange" />}>Integrity Checks</Accordion.Control>
+                                        <Accordion.Panel>
+                                            <Stack gap="sm">
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="blue" size="sm" variant="dot">Stuck Values</Badge>
+                                                    <Text size="sm">Sensors detecting the exact same value (mean, min, max, stddev) for <i>{stuckIntervals ?? 3}</i> consecutive intervals.</Text>
+                                                </Group>
+                                                <Group align="flex-start" wrap="nowrap">
+                                                    <Badge color="cyan" size="sm" variant="outline">Range Checks</Badge>
+                                                    <Text size="sm">Values outside the defined physical valid ranges.</Text>
+                                                </Group>
+                                            </Stack>
+                                        </Accordion.Panel>
+                                    </Accordion.Item>
+                                </Accordion>
+                            </Stack>
+                        </Stack>
+                    </Tabs.Panel>
+                </Tabs>
+            </Drawer>
+
             <Group justify="space-between">
                 <div>
                     <Title order={2}>Data Integrity Report</Title>
@@ -98,13 +308,24 @@ export default function DataIntegrity() {
                         </Badge>
                     )}
 
+                    <Tooltip label="Configure Scan Settings">
+                        <ActionIcon
+                            size="lg"
+                            variant="light"
+                            onClick={() => setSettingsOpen(true)}
+                            disabled={isRunning}
+                        >
+                            <IconSettings size={20} />
+                        </ActionIcon>
+                    </Tooltip>
+
                     <Button
                         leftSection={<IconRefresh size={18} />}
                         loading={isRunning || runValidationMutation.isPending}
                         onClick={handleRunValidation}
                         disabled={isRunning}
                     >
-                        Run Validation Scan
+                        Quick Run (Defaults)
                     </Button>
                 </Group>
             </Group>

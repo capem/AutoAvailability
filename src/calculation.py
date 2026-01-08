@@ -6,6 +6,7 @@ from scipy.interpolate import interp1d
 # Import centralized logging and configuration
 from . import config
 from . import logger_config
+from .settings_manager import get_setting
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -1053,10 +1054,22 @@ def full_calculation(period):
     results = results.infer_objects()
     results["Duration 2006(s)"] = results["Duration 2006(s)"].fillna(0)
 
+    # Determine calculation source for energy
+    calc_source = get_setting("calculation_source", "energy")
+    logger.info(f"[CALC] Using calculation source: {calc_source}")
+
+    # Create Energy_To_Use column based on selection
+    if calc_source == "power":
+        # Use average power converted to energy (kWh)
+        results["Energy_To_Use"] = (results["wtc_ActPower_mean"] / 6).clip(lower=0)
+    else:
+        # Default to accumulator counter
+        results["Energy_To_Use"] = results["wtc_kWG1TotE_accum"]
+
     # -------- Identify operational turbines --------------------------------------
     # Create a mask for operational turbines (no alarms, producing energy)
     operational_turbines_mask = (
-        (results["wtc_kWG1TotE_accum"] > 0)                # Producing energy
+        (results["Energy_To_Use"] > 0)                # Producing energy
         & (results["EffectiveAlarmTime"] == 0)                     # No active alarms
         & (results["wtc_ActPower_min"] > 0)                # Minimum power > 0
         & (results["Duration 2006(s)"] == 0)               # No code 2006 warnings
@@ -1079,7 +1092,7 @@ def full_calculation(period):
         operational_turbines.groupby("TimeStamp", group_keys=True)
         .agg(
             {
-                "wtc_kWG1TotE_accum": apply_energy_correction_factor,     # Apply correction factor to energy
+                "Energy_To_Use": apply_energy_correction_factor,     # Apply correction factor to energy
                 "Correction Factor": get_correction_factor_value,          # Get correction factor
                 "Available Turbines": "count",                             # Count available turbines
             }
@@ -1088,7 +1101,7 @@ def full_calculation(period):
     )
 
     # Rename column for clarity
-    potential_energy = potential_energy.rename(columns={"wtc_kWG1TotE_accum": "Epot"})
+    potential_energy = potential_energy.rename(columns={"Energy_To_Use": "Epot"})
 
     # Remove temporary columns from operational turbines
     del operational_turbines["Correction Factor"]
@@ -1098,7 +1111,7 @@ def full_calculation(period):
     operational_turbines = pd.merge(operational_turbines, potential_energy, on="TimeStamp", how="left")
 
     # For operational turbines, potential energy equals actual energy
-    operational_turbines["Epot"] = operational_turbines["wtc_kWG1TotE_accum"]
+    operational_turbines["Epot"] = operational_turbines["Energy_To_Use"]
     
     # Add method column for operational turbines
     operational_turbines["Epot_Method"] = "Epot=EnergyProduced"
@@ -1113,8 +1126,8 @@ def full_calculation(period):
     non_operational_turbines["Epot_Method"] = "AverageWithWakeLossAdjustments"
 
     # If actual energy exceeds potential energy, use actual energy as potential
-    mask_higher_actual = non_operational_turbines["Epot"] < non_operational_turbines["wtc_kWG1TotE_accum"]
-    non_operational_turbines.loc[mask_higher_actual, "Epot"] = non_operational_turbines.loc[mask_higher_actual, "wtc_kWG1TotE_accum"]
+    mask_higher_actual = non_operational_turbines["Epot"] < non_operational_turbines["Energy_To_Use"]
+    non_operational_turbines.loc[mask_higher_actual, "Epot"] = non_operational_turbines.loc[mask_higher_actual, "Energy_To_Use"]
     non_operational_turbines.loc[mask_higher_actual, "Epot_Method"] = "Epot=EnergyProduced"
 
     # Combine operational and non-operational turbines
@@ -1158,7 +1171,7 @@ def full_calculation(period):
                 final_results.loc[case2_update_mask, "Epot_Method"] = "Anemometer"
                 final_results.loc[case2_update_mask, "Epot"] = np.maximum(
                     potential_energy_values_case2[valid_case2_mask],
-                    final_results.loc[case2_update_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
+                    final_results.loc[case2_update_mask, "Energy_To_Use"].fillna(0).values,
                 )
         except Exception as e:
             logger.error(f"[CALC] Error calculating potential energy from turbine data: {str(e)}")
@@ -1178,14 +1191,14 @@ def full_calculation(period):
                 final_results.loc[still_missing_epot_mask, "Epot_Method"] = "SWE"
                 final_results.loc[still_missing_epot_mask, "Epot"] = np.maximum(
                     potential_energy_values_case3,
-                    final_results.loc[still_missing_epot_mask, "wtc_kWG1TotE_accum"].fillna(0).values,
+                    final_results.loc[still_missing_epot_mask, "Energy_To_Use"].fillna(0).values,
                 )
             except Exception as e:
                 logger.error(f"[CALC] Error calculating potential energy from statistical method: {str(e)}")
 
     # -------- Calculate energy loss --------------------------------------
     # Calculate total energy loss (potential - actual)
-    final_results["EL"] = final_results["Epot"].fillna(0) - final_results["wtc_kWG1TotE_accum"].fillna(0)
+    final_results["EL"] = final_results["Epot"].fillna(0) - final_results["Energy_To_Use"].fillna(0)
 
     # Ensure energy loss is not negative
     final_results["EL"] = final_results["EL"].clip(lower=0)

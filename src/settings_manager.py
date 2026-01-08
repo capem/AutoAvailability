@@ -11,7 +11,8 @@ SETTINGS_FILE = Path(__file__).parent.parent / "config" / "app_settings.json"
 # Default settings
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "email_enabled": True,
-    "default_update_mode": "append"
+    "default_update_mode": "append",
+    "calculation_source": "energy"
 }
 
 _current_settings: Dict[str, Any] = DEFAULT_SETTINGS.copy()

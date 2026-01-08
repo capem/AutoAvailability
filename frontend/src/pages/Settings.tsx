@@ -85,6 +85,7 @@ export default function Settings() {
     // General settings state
     const [emailEnabled, setEmailEnabled] = useState(true)
     const [defaultUpdateMode, setDefaultUpdateMode] = useState('append')
+    const [calculationSource, setCalculationSource] = useState('energy')
     const [settingsHasChanges, setSettingsHasChanges] = useState(false)
 
     // Connection test state
@@ -108,6 +109,7 @@ export default function Settings() {
         if (appSettings) {
             setEmailEnabled(appSettings.email_enabled)
             setDefaultUpdateMode(appSettings.default_update_mode)
+            setCalculationSource(appSettings.calculation_source || 'energy')
             setSettingsHasChanges(false)
         }
     }, [appSettings])
@@ -184,6 +186,7 @@ export default function Settings() {
         settingsMutation.mutate({
             email_enabled: emailEnabled,
             default_update_mode: defaultUpdateMode,
+            calculation_source: calculationSource,
         })
     }
 
@@ -322,6 +325,17 @@ export default function Settings() {
                                 ]}
                                 value={defaultUpdateMode}
                                 onChange={(val) => handleSettingsChange(setDefaultUpdateMode, val || 'append')}
+                            />
+
+                            <Select
+                                label="Calculation Data Source"
+                                description="Choose primary source for energy data"
+                                data={[
+                                    { value: 'energy', label: 'Accumulated Energy (Counter)' },
+                                    { value: 'power', label: 'Average Power (Grid)' },
+                                ]}
+                                value={calculationSource}
+                                onChange={(val) => handleSettingsChange(setCalculationSource, val || 'energy')}
                             />
                         </SimpleGrid>
 

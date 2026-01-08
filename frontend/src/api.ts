@@ -316,6 +316,7 @@ export const testEmailConfiguration = async (): Promise<TestResult> => {
 export interface AppSettings {
     email_enabled: boolean
     default_update_mode: string
+    calculation_source: string
 }
 
 export const getAppSettings = async (): Promise<AppSettings> => {

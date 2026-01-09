@@ -30,6 +30,8 @@ export interface AlarmAdjustment {
     time_off?: string
     notes?: string
     last_updated?: string
+    error_type?: string | number
+    description?: string
 }
 
 export interface SystemStatus {
@@ -94,6 +96,21 @@ export const getAlarms = async (page: number = 1, pageSize: number = 10, filters
     return response.data
 }
 
+export const getSourceAlarms = async (
+    period: string,
+    station_nr?: number,
+    alarm_code?: number,
+    error_type?: 'stopping' | 'non_stopping'
+): Promise<AlarmAdjustment[]> => {
+    let url = `/alarms/source?period=${period}`
+    if (station_nr) url += `&station_nr=${station_nr}`
+    if (alarm_code) url += `&alarm_code=${alarm_code}`
+    if (error_type) url += `&error_type=${error_type}`
+
+    const response = await api.get(url)
+    return response.data
+}
+
 export const addAlarm = async (adjustment: AlarmAdjustment) => {
     const response = await api.post('/alarms', adjustment)
     return response.data
@@ -135,6 +152,11 @@ export const bulkUpdateAlarms = async (ids: number[], data: Partial<AlarmAdjustm
     if (data.notes !== undefined) updateData.notes = data.notes
 
     const response = await api.put('/alarms/bulk/update', { ids, data: updateData })
+    return response.data
+}
+
+export const bulkUpsertAlarms = async (adjustments: AlarmAdjustment[]) => {
+    const response = await api.post('/alarms/bulk/upsert', { adjustments })
     return response.data
 }
 

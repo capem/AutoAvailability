@@ -28,12 +28,22 @@ import {
 import dayjs from 'dayjs'
 import { DataTable, type DataTableSortStatus } from 'mantine-datatable'
 
-import { getAlarms, addAlarm, updateAlarm, deleteAlarm, bulkDeleteAlarms, bulkUpdateAlarms, getAlarmIds } from '../api'
+import { bulkUpsertAlarms, getAlarms, addAlarm, updateAlarm, deleteAlarm, bulkDeleteAlarms, bulkUpdateAlarms, getAlarmIds, getSourceAlarms } from '../api'
 import type { AlarmAdjustment } from '../api'
+import { DateInput } from '@mantine/dates'
+import {
+    Tabs,
+    Select,
+    Alert
+} from '@mantine/core'
+import { IconSearch, IconAlertCircle } from '@tabler/icons-react'
+import SourceAlarmTable from '../components/SourceAlarmTable'
+import { type RowSelectionState } from '@tanstack/react-table'
 
 export default function Alarms() {
     const queryClient = useQueryClient()
     const [opened, { open, close }] = useDisclosure(false)
+    const [activeTab, setActiveTab] = useState<string | null>('guided')
     const [editingAlarm, setEditingAlarm] = useState<AlarmAdjustment | null>(null)
     const [formData, setFormData] = useState({
         id: 0,
@@ -56,6 +66,15 @@ export default function Alarms() {
         updateNotes: false,
         notes: '',
     })
+
+    // Guided Mode State
+    const [searchPeriod, setSearchPeriod] = useState<Date | null>(new Date())
+    const [searchStation, setSearchStation] = useState<number | ''>('')
+    const [searchCode, setSearchCode] = useState<number | ''>('')
+    const [searchType, setSearchType] = useState<string>('all')
+    const [sourceAlarms, setSourceAlarms] = useState<AlarmAdjustment[]>([])
+    const [isSearching, setIsSearching] = useState(false)
+    const [sourceRowSelection, setSourceRowSelection] = useState<RowSelectionState>({})
 
     const [page, setPage] = useState(1)
     const PAGE_SIZE = 10
@@ -209,6 +228,53 @@ export default function Alarms() {
         setEditingAlarm(null)
     }
 
+    const handleSearch = async () => {
+        if (!searchPeriod) return
+
+        setIsSearching(true)
+        try {
+            // Use dayjs for robust date formatting (handles Date objects and other formats safely)
+            const periodStr = dayjs(searchPeriod).format('YYYY-MM')
+            const results = await getSourceAlarms(
+                periodStr,
+                searchStation !== '' ? Number(searchStation) : undefined,
+                searchCode !== '' ? Number(searchCode) : undefined,
+                searchType !== 'all' ? searchType as 'stopping' | 'non_stopping' : undefined
+            )
+            setSourceAlarms(results)
+            if (results.length === 0) {
+                notifications.show({ message: 'No alarms found matching criteria', color: 'yellow' })
+            }
+        } catch (error: any) {
+            notifications.show({ title: 'Search Failed', message: error.message, color: 'red' })
+        } finally {
+            setIsSearching(false)
+        }
+    }
+
+
+
+    // Opens the modal for a source alarm (Guided Mode)
+    const handleAdjustSourceAlarm = (alarm: AlarmAdjustment) => {
+        // Check if an adjustment already exists for this ID
+        const existingAdj = alarmsData?.adjustments.find(a => a.id === alarm.id)
+        if (existingAdj) {
+            handleOpenEdit(existingAdj)
+        } else {
+            // New adjustment for this alarm
+            setEditingAlarm(null) // It's a "new" entry in customizations, even if ID is same
+            setFormData({
+                id: alarm.id,
+                alarm_code: alarm.alarm_code,
+                station_nr: alarm.station_nr,
+                time_on: alarm.time_on ? dayjs(alarm.time_on).format('YYYY-MM-DD HH:mm:ss') : '',
+                time_off: alarm.time_off ? dayjs(alarm.time_off).format('YYYY-MM-DD HH:mm:ss') : '',
+                notes: '', // Notes start empty
+            })
+            open()
+        }
+    }
+
     const handleOpenAdd = () => {
         resetForm()
         open()
@@ -276,12 +342,8 @@ export default function Alarms() {
     }
 
     const handleBulkSubmit = async () => {
-        const data: Partial<AlarmAdjustment> = {}
-        if (bulkFormData.updateTimeOn) data.time_on = bulkFormData.time_on
-        if (bulkFormData.updateTimeOff) data.time_off = bulkFormData.time_off
-        if (bulkFormData.updateNotes) data.notes = bulkFormData.notes
-
-        if (Object.keys(data).length === 0) {
+        // Validation first
+        if (!bulkFormData.updateTimeOn && !bulkFormData.updateTimeOff && !bulkFormData.updateNotes) {
             notifications.show({
                 title: 'Validation Error',
                 message: 'No fields selected for update',
@@ -290,17 +352,63 @@ export default function Alarms() {
             return
         }
 
-        let ids: number[] = []
-        if (selectAllPages) {
-            ids = await getAlarmIds({
-                alarm_code: filters.alarm_code || undefined,
-                station_nr: filters.station_nr || undefined,
-            })
-        } else {
-            ids = selectedRecords.map(r => r.id)
-        }
+        const data: Partial<AlarmAdjustment> = {}
+        if (bulkFormData.updateTimeOn) data.time_on = bulkFormData.time_on
+        if (bulkFormData.updateTimeOff) data.time_off = bulkFormData.time_off
+        if (bulkFormData.updateNotes) data.notes = bulkFormData.notes
 
-        bulkUpdateMutation.mutate({ ids, data })
+        try {
+            if (activeTab === 'guided') {
+                // Guided Mode Bulk Upsert
+                const selectedIds = Object.keys(sourceRowSelection).map(Number)
+                if (selectedIds.length === 0) return
+
+                // Get full alarm objects for selected IDs
+                const selectedAlarms = sourceAlarms.filter(a => selectedIds.includes(a.id))
+
+                // Merge form data into each alarm object
+                const adjustmentsToUpsert = selectedAlarms.map(a => ({
+                    id: a.id,
+                    alarm_code: a.alarm_code,
+                    station_nr: a.station_nr,
+                    ...data
+                }))
+
+                await bulkUpsertAlarms(adjustmentsToUpsert)
+
+                notifications.show({
+                    title: 'Success',
+                    message: `Successfully adjusted ${selectedIds.length} alarms`,
+                    color: 'green',
+                    icon: <IconCheck size={16} />,
+                })
+
+                queryClient.invalidateQueries({ queryKey: ['alarms'] })
+                closeBulkEdit()
+                setSourceRowSelection({})
+
+            } else {
+                // Existing Adjustments Mode (Update Only)
+                let ids: number[] = []
+                if (selectAllPages) {
+                    ids = await getAlarmIds({
+                        alarm_code: filters.alarm_code || undefined,
+                        station_nr: filters.station_nr || undefined,
+                    })
+                } else {
+                    ids = selectedRecords.map(r => r.id)
+                }
+
+                bulkUpdateMutation.mutate({ ids, data })
+            }
+        } catch (error: any) {
+            notifications.show({
+                title: 'Error',
+                message: error.message || 'Bulk action failed',
+                color: 'red',
+                icon: <IconX size={16} />,
+            })
+        }
     }
 
     const toggleSelectAllPages = () => {
@@ -330,180 +438,285 @@ export default function Alarms() {
                     </Button>
                 </Group>
 
-                {/* Bulk Actions Banner */}
-                {selectedRecords.length > 0 && (
-                    <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-blue-light)">
-                        <Group justify="space-between">
-                            <Group>
-                                <Checkbox
-                                    checked={true}
-                                    indeterminate={!selectAllPages && adjustments.length < (alarmsData?.total || 0) && selectedRecords.length < (alarmsData?.total || 0)}
-                                    onChange={() => {
-                                        setSelectedRecords([])
-                                        setSelectAllPages(false)
+
+
+                <Tabs value={activeTab} onChange={setActiveTab}>
+                    <Tabs.List mb="md">
+                        <Tabs.Tab value="guided" leftSection={<IconSearch size={16} />}>
+                            Guided Mode
+                        </Tabs.Tab>
+                        <Tabs.Tab value="existing" leftSection={<IconEdit size={16} />}>
+                            Existing Adjustments
+                        </Tabs.Tab>
+                    </Tabs.List>
+
+                    <Tabs.Panel value="guided">
+                        <Stack gap="md">
+                            <Alert icon={<IconAlertCircle size={16} />} color="blue" variant="light">
+                                Search for alarms in the source data to easily apply adjustments.
+                            </Alert>
+
+                            <Group align="flex-end">
+                                <DateInput
+                                    label="Month"
+                                    placeholder="Select month"
+                                    value={searchPeriod}
+                                    onChange={(val: any) => setSearchPeriod(val)}
+                                    valueFormat="YYYY-MM"
+                                    maxLevel="year"
+                                />
+                                <NumberInput
+                                    label="Station Nr"
+                                    placeholder="e.g. 2307405"
+                                    value={searchStation}
+                                    onChange={(val) => setSearchStation(val === '' ? '' : Number(val))}
+                                    min={0}
+                                />
+                                <NumberInput
+                                    label="Alarm Code"
+                                    placeholder="e.g. 52"
+                                    value={searchCode}
+                                    onChange={(val) => setSearchCode(val === '' ? '' : Number(val))}
+                                    min={0}
+                                />
+                                <Select
+                                    label="Type"
+                                    data={[
+                                        { value: 'all', label: 'All Types' },
+                                        { value: 'stopping', label: 'Stopping (0/1)' },
+                                        { value: 'non_stopping', label: 'Non-Stopping' },
+                                    ]}
+                                    value={searchType}
+                                    onChange={(val) => setSearchType(val || 'all')}
+                                />
+                                <Button
+                                    leftSection={<IconSearch size={16} />}
+                                    loading={isSearching}
+                                    onClick={handleSearch}
+                                    disabled={!searchPeriod}
+                                >
+                                    Search
+                                </Button>
+                            </Group>
+
+                            {/* Guided Mode Bulk Actions Banner */}
+                            {Object.keys(sourceRowSelection).length > 0 && (
+                                <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-blue-light)">
+                                    <Group justify="space-between">
+                                        <Group>
+                                            <Text size="sm" fw={500}>
+                                                {Object.keys(sourceRowSelection).length} alarms selected.
+                                            </Text>
+                                        </Group>
+                                        <Group>
+                                            <Button
+                                                variant="white"
+                                                size="xs"
+                                                leftSection={<IconEdit size={14} />}
+                                                onClick={openBulkEdit}
+                                            >
+                                                Bulk Adjust
+                                            </Button>
+                                        </Group>
+                                    </Group>
+                                </Card>
+                            )}
+
+                            {sourceAlarms.length > 0 && (
+                                <SourceAlarmTable
+                                    data={sourceAlarms}
+                                    onAdjust={handleAdjustSourceAlarm}
+                                    rowSelection={sourceRowSelection}
+                                    setRowSelection={setSourceRowSelection}
+                                />
+                            )}
+                            {sourceAlarms.length === 0 && !isSearching && searchPeriod && (
+                                <Text c="dimmed" ta="center" py="xl">
+                                    No alarms found. Try adjusting filters and searching.
+                                </Text>
+                            )}
+                        </Stack>
+                    </Tabs.Panel>
+
+                    <Tabs.Panel value="existing">
+                        <Stack gap="xl">
+                            {/* Bulk Actions Banner */}
+                            {selectedRecords.length > 0 && (
+                                <Card withBorder padding="sm" radius="md" bg="var(--mantine-color-blue-light)">
+                                    <Group justify="space-between">
+                                        <Group>
+                                            <Checkbox
+                                                checked={true}
+                                                indeterminate={!selectAllPages && adjustments.length < (alarmsData?.total || 0) && selectedRecords.length < (alarmsData?.total || 0)}
+                                                onChange={() => {
+                                                    setSelectedRecords([])
+                                                    setSelectAllPages(false)
+                                                }}
+                                            />
+                                            <Text size="sm" fw={500}>
+                                                {selectAllPages
+                                                    ? `All ${alarmsData?.total} adjustments are selected.`
+                                                    : `${selectedRecords.length} selected.`}
+                                            </Text>
+                                            {!selectAllPages && (alarmsData?.total || 0) > adjustments.length && selectedRecords.length === adjustments.length && (
+                                                <Button variant="subtle" size="compact-sm" onClick={toggleSelectAllPages}>
+                                                    Select all {alarmsData?.total} adjustments across all pages
+                                                </Button>
+                                            )}
+                                        </Group>
+                                        <Group>
+                                            <Button
+                                                variant="white"
+                                                size="xs"
+                                                leftSection={<IconEdit size={14} />}
+                                                onClick={openBulkEdit}
+                                            >
+                                                Bulk Edit
+                                            </Button>
+                                            <Button
+                                                variant="white"
+                                                color="red"
+                                                size="xs"
+                                                leftSection={<IconTrash size={14} />}
+                                                onClick={handleBulkDelete}
+                                                loading={bulkDeleteMutation.isPending}
+                                            >
+                                                Delete Selected
+                                            </Button>
+                                        </Group>
+                                    </Group>
+                                </Card>
+                            )}
+
+                            {/* Alarms Table */}
+                            <Card shadow="sm" padding={0} radius="md" withBorder>
+                                <DataTable
+                                    withTableBorder={false}
+                                    borderRadius="md"
+                                    minHeight={200}
+                                    loaderColor="blue"
+                                    fetching={isLoading || isFetching}
+                                    records={adjustments}
+                                    columns={[
+                                        {
+                                            accessor: 'id',
+                                            title: 'ID',
+                                            sortable: true,
+                                            render: (record) => <Badge variant="light">{record.id}</Badge>,
+                                        },
+                                        {
+                                            accessor: 'alarm_code',
+                                            title: 'Alarm Code',
+                                            sortable: true,
+                                            filter: (
+                                                <TextInput
+                                                    size="xs"
+                                                    placeholder="Filter..."
+                                                    value={filters.alarm_code}
+                                                    onChange={(e) => {
+                                                        setFilters({ ...filters, alarm_code: e.target.value })
+                                                        setPage(1)
+                                                        setSelectedRecords([])
+                                                        setSelectAllPages(false)
+                                                    }}
+                                                />
+                                            ),
+                                            filtering: filters.alarm_code !== '',
+                                        },
+                                        {
+                                            accessor: 'station_nr',
+                                            title: 'Station Nr',
+                                            sortable: true,
+                                            filter: (
+                                                <TextInput
+                                                    size="xs"
+                                                    placeholder="Filter..."
+                                                    value={filters.station_nr}
+                                                    onChange={(e) => {
+                                                        setFilters({ ...filters, station_nr: e.target.value })
+                                                        setPage(1)
+                                                        setSelectedRecords([])
+                                                        setSelectAllPages(false)
+                                                    }}
+                                                />
+                                            ),
+                                            filtering: filters.station_nr !== '',
+                                        },
+                                        {
+                                            accessor: 'time_on',
+                                            title: 'Time On',
+                                            sortable: true,
+                                            render: (record) => record.time_on ? dayjs(record.time_on).format('YYYY-MM-DD HH:mm:ss') : <Text size="sm" c="dimmed">—</Text>,
+                                        },
+                                        {
+                                            accessor: 'time_off',
+                                            title: 'Time Off',
+                                            sortable: true,
+                                            render: (record) => record.time_off ? dayjs(record.time_off).format('YYYY-MM-DD HH:mm:ss') : <Text size="sm" c="dimmed">—</Text>,
+                                        },
+                                        {
+                                            accessor: 'notes',
+                                            title: 'Notes',
+                                            render: (record) => <Text size="sm" lineClamp={1} maw={150}>{record.notes || '—'}</Text>,
+                                        },
+                                        {
+                                            accessor: 'last_updated',
+                                            title: 'Last Updated',
+                                            sortable: true,
+                                            render: (record) => record.last_updated ? <Text size="xs" c="dimmed">{dayjs(record.last_updated).format('YYYY-MM-DD HH:mm')}</Text> : '—',
+                                        },
+                                        {
+                                            accessor: 'actions',
+                                            title: 'Actions',
+                                            textAlign: 'right',
+                                            render: (record) => (
+                                                <Group gap={4} justify="right">
+                                                    <Tooltip label="Edit">
+                                                        <ActionIcon
+                                                            variant="subtle"
+                                                            color="blue"
+                                                            onClick={() => handleOpenEdit(record)}
+                                                        >
+                                                            <IconEdit size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                    <Tooltip label="Delete">
+                                                        <ActionIcon
+                                                            variant="subtle"
+                                                            color="red"
+                                                            onClick={() => handleDelete(record.id)}
+                                                            loading={deleteMutation.isPending}
+                                                        >
+                                                            <IconTrash size={16} />
+                                                        </ActionIcon>
+                                                    </Tooltip>
+                                                </Group>
+                                            ),
+                                        },
+                                    ]}
+                                    totalRecords={alarmsData?.total || 0}
+                                    recordsPerPage={PAGE_SIZE}
+                                    page={page}
+                                    onPageChange={setPage}
+                                    sortStatus={sortStatus}
+                                    onSortStatusChange={setSortStatus as any}
+                                    selectedRecords={selectedRecords}
+                                    onSelectedRecordsChange={(records) => {
+                                        setSelectedRecords(records)
+                                        // If user manually deselects something, we turn off "select all pages" mode
+                                        if (selectAllPages && records.length < adjustments.length) {
+                                            setSelectAllPages(false)
+                                        }
                                     }}
                                 />
-                                <Text size="sm" fw={500}>
-                                    {selectAllPages
-                                        ? `All ${alarmsData?.total} adjustments are selected.`
-                                        : `${selectedRecords.length} selected.`}
-                                </Text>
-                                {!selectAllPages && (alarmsData?.total || 0) > adjustments.length && selectedRecords.length === adjustments.length && (
-                                    <Button variant="subtle" size="compact-sm" onClick={toggleSelectAllPages}>
-                                        Select all {alarmsData?.total} adjustments across all pages
-                                    </Button>
-                                )}
-                            </Group>
-                            <Group>
-                                <Button
-                                    variant="white"
-                                    size="xs"
-                                    leftSection={<IconEdit size={14} />}
-                                    onClick={openBulkEdit}
-                                >
-                                    Bulk Edit
-                                </Button>
-                                <Button
-                                    variant="white"
-                                    color="red"
-                                    size="xs"
-                                    leftSection={<IconTrash size={14} />}
-                                    onClick={handleBulkDelete}
-                                    loading={bulkDeleteMutation.isPending}
-                                >
-                                    Delete Selected
-                                </Button>
-                            </Group>
-                        </Group>
-                    </Card>
-                )}
-
-                {/* Alarms Table */}
-                <Card shadow="sm" padding={0} radius="md" withBorder>
-                    <DataTable
-                        withTableBorder={false}
-                        borderRadius="md"
-                        minHeight={200}
-                        loaderColor="blue"
-                        fetching={isLoading || isFetching}
-                        records={adjustments}
-                        columns={[
-                            {
-                                accessor: 'id',
-                                title: 'ID',
-                                sortable: true,
-                                render: (record) => <Badge variant="light">{record.id}</Badge>,
-                            },
-                            {
-                                accessor: 'alarm_code',
-                                title: 'Alarm Code',
-                                sortable: true,
-                                filter: (
-                                    <TextInput
-                                        size="xs"
-                                        placeholder="Filter..."
-                                        value={filters.alarm_code}
-                                        onChange={(e) => {
-                                            setFilters({ ...filters, alarm_code: e.target.value })
-                                            setPage(1)
-                                            setSelectedRecords([])
-                                            setSelectAllPages(false)
-                                        }}
-                                    />
-                                ),
-                                filtering: filters.alarm_code !== '',
-                            },
-                            {
-                                accessor: 'station_nr',
-                                title: 'Station Nr',
-                                sortable: true,
-                                filter: (
-                                    <TextInput
-                                        size="xs"
-                                        placeholder="Filter..."
-                                        value={filters.station_nr}
-                                        onChange={(e) => {
-                                            setFilters({ ...filters, station_nr: e.target.value })
-                                            setPage(1)
-                                            setSelectedRecords([])
-                                            setSelectAllPages(false)
-                                        }}
-                                    />
-                                ),
-                                filtering: filters.station_nr !== '',
-                            },
-                            {
-                                accessor: 'time_on',
-                                title: 'Time On',
-                                sortable: true,
-                                render: (record) => record.time_on ? dayjs(record.time_on).format('YYYY-MM-DD HH:mm') : <Text size="sm" c="dimmed">—</Text>,
-                            },
-                            {
-                                accessor: 'time_off',
-                                title: 'Time Off',
-                                sortable: true,
-                                render: (record) => record.time_off ? dayjs(record.time_off).format('YYYY-MM-DD HH:mm') : <Text size="sm" c="dimmed">—</Text>,
-                            },
-                            {
-                                accessor: 'notes',
-                                title: 'Notes',
-                                render: (record) => <Text size="sm" lineClamp={1} maw={150}>{record.notes || '—'}</Text>,
-                            },
-                            {
-                                accessor: 'last_updated',
-                                title: 'Last Updated',
-                                sortable: true,
-                                render: (record) => record.last_updated ? <Text size="xs" c="dimmed">{dayjs(record.last_updated).format('YYYY-MM-DD HH:mm')}</Text> : '—',
-                            },
-                            {
-                                accessor: 'actions',
-                                title: 'Actions',
-                                textAlign: 'right',
-                                render: (record) => (
-                                    <Group gap={4} justify="right">
-                                        <Tooltip label="Edit">
-                                            <ActionIcon
-                                                variant="subtle"
-                                                color="blue"
-                                                onClick={() => handleOpenEdit(record)}
-                                            >
-                                                <IconEdit size={16} />
-                                            </ActionIcon>
-                                        </Tooltip>
-                                        <Tooltip label="Delete">
-                                            <ActionIcon
-                                                variant="subtle"
-                                                color="red"
-                                                onClick={() => handleDelete(record.id)}
-                                                loading={deleteMutation.isPending}
-                                            >
-                                                <IconTrash size={16} />
-                                            </ActionIcon>
-                                        </Tooltip>
-                                    </Group>
-                                ),
-                            },
-                        ]}
-                        totalRecords={alarmsData?.total || 0}
-                        recordsPerPage={PAGE_SIZE}
-                        page={page}
-                        onPageChange={setPage}
-                        sortStatus={sortStatus}
-                        onSortStatusChange={setSortStatus as any}
-                        selectedRecords={selectedRecords}
-                        onSelectedRecordsChange={(records) => {
-                            setSelectedRecords(records)
-                            // If user manually deselects something, we turn off "select all pages" mode
-                            if (selectAllPages && records.length < adjustments.length) {
-                                setSelectAllPages(false)
-                            }
-                        }}
-                    />
-                </Card>
-            </Stack>
+                            </Card>
+                        </Stack>
+                    </Tabs.Panel>
+                </Tabs>
+            </Stack >
 
             {/* Add/Edit Modal */}
-            <Modal
+            < Modal
                 opened={opened}
                 onClose={close}
                 title={editingAlarm ? 'Edit Alarm Adjustment' : 'Add Alarm Adjustment'}
@@ -567,13 +780,14 @@ export default function Alarms() {
                         </Button>
                     </Group>
                 </Stack>
-            </Modal>
+            </Modal >
 
             {/* Bulk Edit Modal */}
-            <Modal
+            < Modal
                 opened={bulkEditOpened}
                 onClose={closeBulkEdit}
-                title={`Bulk Edit (${selectAllPages ? alarmsData?.total : selectedRecords.length} items)`}
+                title={`Bulk Edit (${selectAllPages ? alarmsData?.total : selectedRecords.length} items)`
+                }
                 size="md"
             >
                 <Stack gap="md">
@@ -642,7 +856,7 @@ export default function Alarms() {
                         </Button>
                     </Group>
                 </Stack>
-            </Modal>
-        </Container>
+            </Modal >
+        </Container >
     )
 }

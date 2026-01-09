@@ -302,6 +302,62 @@ def update_adjustments_batch(ids: list[int], data: dict):
     return False
 
 
+def upsert_adjustments_batch(adjustments_list: list[dict]):
+    """
+    Upsert multiple adjustments.
+    - If ID exists: Update provided fields.
+    - If ID invalid (not found): Create new adjustment.
+    """
+    current_data = load_adjustments()
+    adjustments_map = {adj["id"]: i for i, adj in enumerate(current_data["adjustments"])}
+    
+    upsert_count = 0
+    
+    for new_adj in adjustments_list:
+        adj_id = new_adj.get("id")
+        if adj_id is None:
+            continue
+            
+        upsert_count += 1
+        current_idx = adjustments_map.get(adj_id)
+        
+        if current_idx is not None:
+            # Update existing
+            if "time_on" in new_adj:
+                current_data["adjustments"][current_idx]["time_on"] = new_adj["time_on"]
+            if "time_off" in new_adj:
+                current_data["adjustments"][current_idx]["time_off"] = new_adj["time_off"]
+            if "notes" in new_adj:
+                current_data["adjustments"][current_idx]["notes"] = new_adj["notes"]
+            
+            current_data["adjustments"][current_idx]["last_updated"] = datetime.now().isoformat()
+        else:
+            # Create new
+            entry = {
+                "id": adj_id,
+                "alarm_code": new_adj.get("alarm_code", 0),
+                "station_nr": new_adj.get("station_nr", 0),
+                "notes": new_adj.get("notes", ""),
+                "last_updated": datetime.now().isoformat()
+            }
+            if "time_on" in new_adj:
+                entry["time_on"] = new_adj["time_on"]
+            if "time_off" in new_adj:
+                entry["time_off"] = new_adj["time_off"]
+                
+            current_data["adjustments"].append(entry)
+            # Update map just in case duplicates in input list refer to same new ID
+            adjustments_map[adj_id] = len(current_data["adjustments"]) - 1
+
+    if upsert_count == 0:
+        return False
+
+    if save_adjustments(current_data):
+        logger.info(f"[ALARMS] Upserted {upsert_count} adjustments")
+        return True
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Manually adjust alarm time_on and time_off values")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")

@@ -870,6 +870,22 @@
             "time_off": "2025-10-07 14:32",
             "notes": "wrong time off",
             "last_updated": "2025-12-31T16:13:32.222255"
+        },
+        {
+            "id": 13128517,
+            "alarm_code": 1003,
+            "station_nr": 2307479,
+            "notes": "No time Off",
+            "last_updated": "2026-01-09T13:33:16.740439",
+            "time_off": "2025-12-19 10:18:18"
+        },
+        {
+            "id": 13124353,
+            "alarm_code": 1001,
+            "station_nr": 2307479,
+            "notes": "No time Off",
+            "last_updated": "2026-01-09T13:33:16.740456",
+            "time_off": "2025-12-19 10:18:18"
         }
     ]
 }

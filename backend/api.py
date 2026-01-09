@@ -9,6 +9,7 @@ import multiprocessing
 import json
 from datetime import datetime, timedelta
 from typing import List, Optional
+from functools import lru_cache
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -26,6 +27,8 @@ from src import config
 from src import adjust_alarms
 from src import logger_config
 from src import scheduler as app_scheduler
+from src.calculation import DataLoader
+import pandas as pd
 
 logger = logger_config.get_logger(__name__)
 
@@ -43,6 +46,19 @@ class ProcessRequest(BaseModel):
     """Request model for data processing."""
     dates: List[str] = Field(..., description="List of dates in YYYY-MM-DD format")
     update_mode: str = Field(default="append", description="Update mode: append, check, force-overwrite, process-existing, process-existing-except-alarms")
+
+
+@lru_cache(maxsize=1)
+def get_error_list():
+    """Cached loading of the error list from Excel."""
+    try:
+        error_list = pd.read_excel(config.ALARMS_FILE_PATH)
+        error_list["Number"] = error_list["Number"].astype(int)
+        error_list.drop_duplicates(subset=["Number"], inplace=True)
+        return error_list[["Number", "Error Type", "UK Text"]]
+    except Exception as e:
+        logger.error(f"[API] Failed to load error list: {e}")
+        return pd.DataFrame(columns=["Number", "Error Type", "UK Text"])
 
 
 class AlarmAdjustment(BaseModel):
@@ -463,6 +479,102 @@ async def list_alarm_ids(
     return [a.get("id") for a in all_adjustments if a.get("id") is not None]
 
 
+@router.get("/alarms/source")
+async def get_source_alarms(
+    period: str,
+    station_nr: Optional[int] = None,
+    alarm_code: Optional[int] = None,
+    error_type: Optional[str] = None
+):
+    """
+    Get raw alarms from source data for the specified period.
+    Also maps error types using the alarm configuration file.
+    Optimized for performance using vectorized operations and caching.
+    """
+    try:
+        # Load raw alarm data
+        alarm_data = DataLoader.load_alarm_data(period)
+        
+        if alarm_data.empty:
+            return []
+
+        # Load error list (cached)
+        error_list = get_error_list()
+        
+        # Merge to get Error Type and UK Text
+        # Using inner join might loose alarms with unknown codes, use left to keep them
+        merged_data = pd.merge(
+            alarm_data, 
+            error_list, 
+            left_on="Alarmcode", 
+            right_on="Number", 
+            how="left"
+        )
+        
+        # Vectorized Filtering
+        mask = pd.Series(True, index=merged_data.index)
+        
+        if station_nr is not None:
+            mask &= (merged_data["StationNr"] == station_nr)
+            
+        if alarm_code is not None:
+            mask &= (merged_data["Alarmcode"] == alarm_code)
+            
+        if error_type:
+            # Optimize type check - ensure numeric comparison where possible
+            # Assuming Error Type 0 and 1 are stopping
+            is_stopping = merged_data["Error Type"].isin([0, 1])
+            if error_type == "stopping":
+                 mask &= is_stopping
+            elif error_type == "non_stopping":
+                 mask &= ~is_stopping
+        
+        # Apply filter
+        filtered_data = merged_data[mask]
+        
+        if filtered_data.empty:
+            return []
+
+        # Optimize Response Construction
+        # Select and rename columns
+        result_df = filtered_data[[
+            "ID", "StationNr", "Alarmcode", "TimeOn", "TimeOff", 
+            "Parameter", "Error Type", "UK Text"
+        ]].copy()
+        
+        result_df.columns = [
+            "id", "station_nr", "alarm_code", "time_on", "time_off", 
+            "parameter", "error_type", "description"
+        ]
+        
+        # Handle NaN/None values efficiently
+        result_df["id"] = result_df["id"].where(pd.notna(result_df["id"]), None)
+        
+        # Dates to ISO format strings - vectorized
+        # TimeOn and TimeOff are already datetime objects from DataLoader
+        result_df["time_on"] = result_df["time_on"].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+        result_df["time_off"] = result_df["time_off"].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+        
+        # Fill NaNs for text/numeric fields
+        result_df["parameter"] = result_df["parameter"].fillna("")
+        result_df["error_type"] = result_df["error_type"].fillna("Unknown")
+        result_df["description"] = result_df["description"].fillna("")
+        
+        # Sort values (fastest via pandas)
+        result_df.sort_values(by="time_on", ascending=False, inplace=True)
+        
+        # Return all results (frontend handles virtualization)
+        final_df = result_df
+        
+        # Convert to dictionary record list
+        return final_df.to_dict(orient="records")
+        
+    except Exception as e:
+        logger.error(f"[API] Error fetching source alarms: {e}")
+        # In case of pandas errors, return 500
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/alarms")
 async def add_alarm(adjustment: AlarmAdjustment):
     """Add a new alarm adjustment."""
@@ -512,6 +624,26 @@ async def bulk_update_alarms(request: BulkUpdateRequest):
         return {"message": f"Successfully updated {len(request.ids)} adjustments"}
     else:
          raise HTTPException(status_code=404, detail="No adjustments found to update")
+
+
+class BulkUpsertRequest(BaseModel):
+    adjustments: List[AlarmAdjustment]
+
+
+@router.post("/alarms/bulk/upsert")
+async def bulk_upsert_alarms(request: BulkUpsertRequest):
+    """Upsert multiple alarm adjustments (update if exists, create if not)."""
+    if not request.adjustments:
+         raise HTTPException(status_code=400, detail="No adjustments provided")
+
+    # Convert Pydantic models to dicts
+    data = [adj.dict(exclude_unset=True) for adj in request.adjustments]
+    
+    success = adjust_alarms.upsert_adjustments_batch(data)
+    if success:
+        return {"message": f"Successfully upserted {len(data)} adjustments"}
+    else:
+         raise HTTPException(status_code=500, detail="Failed to upsert adjustments")
 
 
 @router.put("/alarms/{alarm_id}")

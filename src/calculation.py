@@ -800,6 +800,8 @@ def full_calculation(period):
 
     # Set period start to first day of month at midnight
     period_start = pd.Timestamp(f"{period}-01 00:00:00.000")
+    # Define a buffer period start (10 minutes before) to handle the first interval overlap
+    period_start_buffer = period_start - pd.Timedelta(minutes=10)
 
     # Set period end to the latest timestamp in the counter data
     period_end = counter_data.TimeStamp.max()
@@ -886,7 +888,7 @@ def full_calculation(period):
 
     # Drop alarms that ended before period start
     alarm_data.drop(
-        alarm_data.query("(TimeOn < @period_start) & (TimeOff < @period_start) & Alarmcode.isin(@alarm_codes_0_1)").index,
+        alarm_data.query("(TimeOn < @period_start_buffer) & (TimeOff < @period_start_buffer) & Alarmcode.isin(@alarm_codes_0_1)").index,
         inplace=True,
     )
 
@@ -898,11 +900,11 @@ def full_calculation(period):
     warning_date = alarm_data.TimeOn.min()
 
     # Set start time to period start for alarms that started before
-    alarm_data.loc[(alarm_data.TimeOn < period_start) & (alarm_data.Alarmcode.isin(alarm_codes_0_1)), "TimeOn"] = period_start
+    alarm_data.loc[(alarm_data.TimeOn < period_start_buffer) & (alarm_data.Alarmcode.isin(alarm_codes_0_1)), "TimeOn"] = period_start_buffer
 
     # Drop non-error alarms that started before period start
     alarm_data.drop(
-        alarm_data.query("~Alarmcode.isin(@alarm_codes_0_1) & (TimeOn < @period_start)").index,
+        alarm_data.query("~Alarmcode.isin(@alarm_codes_0_1) & (TimeOn < @period_start_buffer)").index,
         inplace=True,
     )
     alarm_data.reset_index(drop=True, inplace=True)
@@ -928,9 +930,9 @@ def full_calculation(period):
 
     # Filter to include only alarms active during the period
     alarms_code_2006 = alarms_code_2006.query(
-        "(@period_start < TimeOn < @period_end) | \
-        (@period_start < TimeOff < @period_end) | \
-        ((TimeOn < @period_start) & (@period_end < TimeOff))"
+        "(@period_start_buffer < TimeOn < @period_end) | \
+        (@period_start_buffer < TimeOff < @period_end) | \
+        ((TimeOn < @period_start_buffer) & (@period_end < TimeOff))"
     )
 
     # Process code 2006 warnings if any exist

@@ -1,4 +1,4 @@
-"""
+﻿"""
 API Routes for Wind Farm Data Processing
 
 Exposes endpoints for data processing, alarm management, logs, and system status.
@@ -228,6 +228,7 @@ def run_processing_worker(status_dict, dates: List[str], update_mode: str):
         status_dict["step"] = None
         
     except Exception as e:
+        logger.exception(f"[API] Fatal error in processing worker: {e}")
         status_dict["status"] = "error"
         status_dict["message"] = str(e)
         status_dict["date"] = None
@@ -264,6 +265,7 @@ def run_validation_worker(status_dict, dates=None, start_date=None, end_date=Non
             status_dict["message"] = "Validation complete"
             status_dict["step"] = None
     except Exception as e:
+            logger.exception(f"[API] Fatal error in processing worker: {e}")
             status_dict["status"] = "error"
             status_dict["message"] = str(e)
             status_dict["step"] = None
@@ -393,8 +395,12 @@ async def get_processing_status():
     # Check if process finished unexpectedly
     if _current_process is not None and not _current_process.is_alive():
         if status_dict.get("status") == "running":
+            # Get the exit code to help with debugging
+            exit_code = _current_process.exitcode
+            logger.error(f"[API] Processing worker terminated unexpectedly! Exit code: {exit_code}")
+            
             status_dict["status"] = "error"
-            status_dict["message"] = "Process terminated unexpectedly"
+            status_dict["message"] = f"Process terminated unexpectedly (Exit code: {exit_code})"
         _current_process = None
     
     return dict(status_dict)

@@ -637,9 +637,14 @@ class DataLoader:
         # Remove rows with missing alarm codes
         alarm_data.dropna(subset=["Alarmcode"], inplace=True)
 
-        # Convert time columns to datetime
-        alarm_data["TimeOn"] = pd.to_datetime(alarm_data["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f")
-        alarm_data["TimeOff"] = pd.to_datetime(alarm_data["TimeOff"], format="%Y-%m-%d %H:%M:%S.%f")
+        # Convert time columns to datetime (strictly matching with or without microseconds)
+        alarm_data["TimeOn"] = pd.to_datetime(alarm_data["TimeOn"], format="%Y-%m-%d %H:%M:%S.%f", errors="coerce").fillna(
+            pd.to_datetime(alarm_data["TimeOn"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        )
+        
+        alarm_data["TimeOff"] = pd.to_datetime(alarm_data["TimeOff"], format="%Y-%m-%d %H:%M:%S.%f", errors="coerce").fillna(
+            pd.to_datetime(alarm_data["TimeOff"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+        )
 
         # Filter to include only relevant turbines (station numbers)
         alarm_data = alarm_data[alarm_data.StationNr >= 2307405]

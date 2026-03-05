@@ -7,6 +7,7 @@ from scipy.interpolate import interp1d
 from . import config
 from . import logger_config
 from .settings_manager import get_setting
+from .adjust_alarms import upsert_adjustments_batch
 
 # Get a logger for this module
 logger = logger_config.get_logger(__name__)
@@ -878,7 +879,63 @@ def full_calculation(period):
             f"[CALC] Earliest TimeOn when TimeOff is NA = {alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1) & alarm_data.TimeOff.isna()].TimeOn.min()}"
         )
 
-    # Fill missing TimeOff values with period end
+    # ------------------ DYNAMIC TIMEOFF IMPUTATION ------------------
+    # Determine the reliable source for positive production based on calc_source
+    calc_source = get_setting("calculation_source", "energy")
+    
+    # Filter the chosen dataset for strict positive production
+    if calc_source == "power":
+        # ActPower_mean > 0 indicates active generation
+        prod_data = grid_data.loc[grid_data["wtc_ActPower_mean"] > 0, ["StationId", "TimeStamp"]]
+    else:
+        # Counter data accumulating > 0 indicates active generation
+        prod_data = counter_data.loc[counter_data["wtc_kWG1TotE_accum"] > 0, ["StationId", "TimeStamp"]]
+    
+    # Isolate active alarms of interest (Error Types 0 & 1) that are missing a TimeOff
+    missing_timeoff_mask = alarm_data.Alarmcode.isin(alarm_codes_0_1) & alarm_data.TimeOff.isna()
+    
+    if missing_timeoff_mask.any():
+        num_imputed = 0
+        imputed_adjustments = []
+        
+        # Iterate over alarms missing TimeOff
+        for idx, alarm_row in alarm_data[missing_timeoff_mask].iterrows():
+            st_nr = alarm_row["StationNr"]
+            t_on = alarm_row["TimeOn"]
+            
+            # Find all production timestamps strictly AFTER this alarm started for this turbine
+            valid_prod_times = prod_data.loc[
+                (prod_data["StationId"] == st_nr) & (prod_data["TimeStamp"] > t_on), 
+                "TimeStamp"
+            ]
+            
+            if not valid_prod_times.empty:
+                # The first time the turbine woke up and produced energy
+                t_prod = valid_prod_times.min()
+                alarm_data.loc[idx, "TimeOff"] = t_prod
+                num_imputed += 1
+                
+                # Prepare adjustment for persistence
+                imputed_adjustments.append({
+                    "id": int(alarm_row["ID"]),
+                    "alarm_code": int(alarm_row["Alarmcode"]),
+                    "station_nr": int(alarm_row["StationNr"]),
+                    "time_off": t_prod.strftime("%Y-%m-%d %H:%M:%S"),
+                    "notes": "Auto-imputed from production data"
+                })
+                
+        logger.info(f"[CALC] Successfully imputed {num_imputed} missing TimeOffs using production data.")
+        
+        # Persist adjustments
+        if imputed_adjustments:
+            try:
+                upsert_adjustments_batch(imputed_adjustments)
+                logger.info(f"[CALC] Persisted {len(imputed_adjustments)} imputations to manual adjustments.")
+            except Exception as e:
+                logger.error(f"[CALC] Failed to persist imputations: {e}")
+    # ----------------------------------------------------------------
+
+    # Fill remaining missing TimeOff values with period end
     alarm_data.loc[alarm_data.Alarmcode.isin(alarm_codes_0_1), "TimeOff"] = alarm_data.loc[
         alarm_data.Alarmcode.isin(alarm_codes_0_1), "TimeOff"
     ].fillna(period_end)

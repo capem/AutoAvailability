@@ -188,12 +188,16 @@ class ConnectionPool:
             # Try to use the engine's connection if available
             if self.engine is not None:
                 conn = self.engine.connect().connection
-                logger.debug("[EXPORT] Database connection created from SQLAlchemy engine.")
+                logger.debug(
+                    "[EXPORT] Database connection created from SQLAlchemy engine."
+                )
                 return conn
             else:
                 # Fallback to direct pyodbc connection
                 conn = pyodbc.connect(connection_string, timeout=10)  # Added timeout
-                logger.debug("[EXPORT] Database connection created directly with pyodbc.")
+                logger.debug(
+                    "[EXPORT] Database connection created directly with pyodbc."
+                )
                 return conn
         except Exception as e:
             logger.error(f"[EXPORT] Failed to create database connection: {str(e)}")
@@ -219,12 +223,16 @@ class ConnectionPool:
                     if not conn.closed:
                         self.pool.put(conn)
                     else:
-                        logger.warning("[EXPORT] Connection was closed, creating a new one.")
+                        logger.warning(
+                            "[EXPORT] Connection was closed, creating a new one."
+                        )
                         self.pool.put(self._create_connection())
 
                 except pyodbc.Error:
                     # If connection is broken, create a new one
-                    logger.warning("[EXPORT] Connection is broken, replacing with a new one")
+                    logger.warning(
+                        "[EXPORT] Connection is broken, replacing with a new one"
+                    )
                     try:
                         conn.close()
                     except Exception:
@@ -296,7 +304,9 @@ class DBExporter:
                 f"[EXPORT] Loaded {len(self.alarms_0_1)} alarm codes for type 0/1 from {excel_path}"
             )
         except Exception as e:
-            logger.error(f"[EXPORT] Failed to load or process error list from Excel: {e}")
+            logger.error(
+                f"[EXPORT] Failed to load or process error list from Excel: {e}"
+            )
             self.alarms_0_1 = pd.Series(dtype=int)
 
     def _load_manual_adjustments(self):
@@ -390,7 +400,9 @@ class DBExporter:
                 # Ensure alarm data is loaded for tblAlarmLog operations
                 self._ensure_alarm_data_loaded()
                 if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                    logger.error("[EXPORT] Failed to load alarms_0_1 for tblAlarmLog check.")
+                    logger.error(
+                        "[EXPORT] Failed to load alarms_0_1 for tblAlarmLog check."
+                    )
                     return None, None
 
                 alarm_codes_tuple = tuple(self.alarms_0_1.tolist())
@@ -425,9 +437,7 @@ class DBExporter:
                 {where_clause}
                 """
 
-            logger.debug(
-                f"[EXPORT] Executing state check query for {table_name}"
-            )
+            logger.debug(f"[EXPORT] Executing state check query for {table_name}")
 
             # Use SQLAlchemy engine if available, otherwise fall back to connection pool
             if (
@@ -456,7 +466,9 @@ class DBExporter:
                         )
                         return None, None
                 except Exception as e:
-                    logger.error(f"[EXPORT] Error executing query with SQLAlchemy engine: {e}")
+                    logger.error(
+                        f"[EXPORT] Error executing query with SQLAlchemy engine: {e}"
+                    )
                     connection.close()
                     return None, None
             else:
@@ -481,10 +493,14 @@ class DBExporter:
                         return None, None
 
         except pyodbc.Error as e:
-            logger.error(f"[EXPORT] Database error during state check for {table_name}: {e}")
+            logger.error(
+                f"[EXPORT] Database error during state check for {table_name}: {e}"
+            )
             return None, None
         except Exception as e:
-            logger.error(f"[EXPORT] Unexpected error during state check for {table_name}: {e}")
+            logger.error(
+                f"[EXPORT] Unexpected error during state check for {table_name}: {e}"
+            )
             return None, None
 
     def _fetch_db_data(self, table_name, period_start, period_end):
@@ -501,7 +517,9 @@ class DBExporter:
                     # Ensure alarm data is loaded for tblAlarmLog operations
                     self._ensure_alarm_data_loaded()
                     if self.alarms_0_1 is None or self.alarms_0_1.empty:
-                        logger.error("[EXPORT] Failed to load alarms_0_1 for tblAlarmLog fetch.")
+                        logger.error(
+                            "[EXPORT] Failed to load alarms_0_1 for tblAlarmLog fetch."
+                        )
                         return pd.DataFrame()
                     query = self.construct_query(
                         period_start, period_end, self.alarms_0_1
@@ -569,16 +587,35 @@ class DBExporter:
             return pd.DataFrame()
 
     def _apply_manual_adjustments(self, df):
-        """Apply manual adjustments to alarm data."""
+        """Apply manual adjustments to alarm data.
+
+        Also detects stale auto-imputed adjustments: if the DB now provides
+        a real TimeOff for a previously auto-imputed alarm, the adjustment
+        is removed from manual_adjustments.json.
+        """
         if not self.manual_adjustments.get("adjustments"):
             return df
 
         df_adjusted = df.copy()
         adjustments_applied = 0
+        stale_auto_ids = []  # IDs where DB now has a real TimeOff
 
         for adjustment in self.manual_adjustments["adjustments"]:
             mask = df_adjusted["ID"] == adjustment["id"]
             if mask.any():
+                # CHECK: If this was auto-imputed AND the DB now has a real TimeOff,
+                # the adjustment is stale — skip it and mark for removal
+                is_auto_imputed = "Auto-imputed" in adjustment.get("notes", "")
+                if is_auto_imputed and "time_off" in adjustment:
+                    raw_timeoff = df_adjusted.loc[mask, "TimeOff"].iloc[0]
+                    if pd.notna(raw_timeoff):
+                        stale_auto_ids.append(adjustment["id"])
+                        logger.info(
+                            f"[EXPORT] Alarm ID {adjustment['id']} now has DB TimeOff={raw_timeoff}. "
+                            f"Removing stale auto-imputation."
+                        )
+                        continue  # Skip applying this adjustment
+
                 adjustment_count = 0
                 try:
                     # Apply time_off adjustment if present
@@ -619,6 +656,17 @@ class DBExporter:
                         f"[EXPORT] Failed to apply adjustment for alarm ID {adjustment['id']}: {e}"
                     )
 
+        # Remove stale auto-imputed adjustments from the JSON file
+        if stale_auto_ids:
+            from .adjust_alarms import remove_adjustments_batch
+
+            remove_adjustments_batch(stale_auto_ids)
+            # Reload to keep in-memory state in sync
+            self.manual_adjustments = self._load_manual_adjustments()
+            logger.info(
+                f"[EXPORT] Removed {len(stale_auto_ids)} stale auto-imputed adjustments."
+            )
+
         if adjustments_applied > 0:
             logger.info(
                 f"[EXPORT] Applied {adjustments_applied} manual adjustments to alarm data"
@@ -654,11 +702,13 @@ class DBExporter:
                 logger.warning(
                     f"[EXPORT] DB fetch for {table_name} returned empty but DB count was {db_count}."
                 )
-            
+
             # --- Integrated Data Completeness Check ---
             # Check for gaps immediately after fetch to avoid redundant queries later
             try:
-                check_result = integrity.check_completeness(db_df, period_start, period_end)
+                check_result = integrity.check_completeness(
+                    db_df, period_start, period_end
+                )
                 if check_result.get("missing_count", 0) > 0:
                     logger.warning(
                         f"[EXPORT] COMPLETENESS CHECK WARNING for {table_name}: "
@@ -670,7 +720,9 @@ class DBExporter:
                     logger.debug(f"[EXPORT] Completeness check passed for {table_name}")
             except Exception as e:
                 # Do not block export on check failure
-                logger.error(f"[EXPORT] Error checking completeness for {table_name}: {e}")
+                logger.error(
+                    f"[EXPORT] Error checking completeness for {table_name}: {e}"
+                )
             # ------------------------------------------
 
             # 2. Read existing CSV if relevant for append/check modes
@@ -918,7 +970,9 @@ class DBExporter:
             final_df.to_csv(
                 output_path, index=False
             )  # , date_format='%Y-%m-%d %H:%M:%S.%f') # Ensure consistent date format if needed
-            logger.info(f"[EXPORT] Successfully exported {len(final_df)} rows to {output_path}")
+            logger.info(
+                f"[EXPORT] Successfully exported {len(final_df)} rows to {output_path}"
+            )
 
             # 5. Write metadata
             self._write_metadata(
@@ -961,7 +1015,9 @@ class DBExporter:
                 if table_name == "tblAlarmLog":
                     # Update alarms (using append to be safe)
                     update_mode = "append"
-                    logger.info(f"[EXPORT] Mode 'process-existing-except-alarms': Treating {table_name} as 'append'")
+                    logger.info(
+                        f"[EXPORT] Mode 'process-existing-except-alarms': Treating {table_name} as 'append'"
+                    )
                 else:
                     # Process existing for others so we don't fetch from DB
                     update_mode = "process-existing"
@@ -1050,7 +1106,7 @@ class DBExporter:
             # This prevents checking for future data
             next_month = period_dt.replace(day=1) + relativedelta(months=1)
             period_end_dt = min(next_month, datetime.now())
-                
+
             period_end = period_end_dt.strftime("%Y-%m-%d %H:%M:%S")
 
             logger.info(
@@ -1111,7 +1167,9 @@ class DBExporter:
                     )
 
             else:  # Invalid mode
-                logger.error(f"[EXPORT] Invalid update_mode '{update_mode}'. Cannot export.")
+                logger.error(
+                    f"[EXPORT] Invalid update_mode '{update_mode}'. Cannot export."
+                )
                 return False
 
             # 4. Perform reconciliation and export if needed
@@ -1207,7 +1265,9 @@ def export_table_to_csv(period, file_types=None, update_mode="append"):
             # Optionally remove metadata file if export failed? Or keep it? Keeping it for now.
 
     except Exception as e:  # Keep the main exception handling
-        logger.exception(f"[EXPORT] An unexpected error occurred during export process: {e}")
+        logger.exception(
+            f"[EXPORT] An unexpected error occurred during export process: {e}"
+        )
         # Mark all requested types as failed if a major error occurs
         for ft in file_types:
             results[ft] = False
@@ -1352,7 +1412,9 @@ def generate_period_range(start_period, end_period=None):
 
     # Ensure start date is before or equal to end date
     if start_date > end_date:
-        logger.error(f"[EXPORT] Start period {start_period} is after end period {end_period}")
+        logger.error(
+            f"[EXPORT] Start period {start_period} is after end period {end_period}"
+        )
         return []
 
     # Generate list of periods
@@ -1390,7 +1452,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update-mode",
-        choices=["check", "append", "force-overwrite", "process-existing", "process-existing-except-alarms"],
+        choices=[
+            "check",
+            "append",
+            "force-overwrite",
+            "process-existing",
+            "process-existing-except-alarms",
+        ],
         default="append",
         help="Mode for handling existing data exports: 'check' (report changes), 'append' (update/append preserving deletions), 'force-overwrite' (export fresh data), 'process-existing' (skip export/check, process existing files only), 'process-existing-except-alarms' (updates alarms, uses existing for others).",
     )

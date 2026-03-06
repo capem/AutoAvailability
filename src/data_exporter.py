@@ -99,6 +99,8 @@ TABLE_COLUMNS = {
         "[wtc_kWG1Tot_accum]",
         "[wtc_kWG1TotE_accum]",
         "[wtc_kWG1TotI_accum]",
+        "[wtc_kWG1Tot_endvalue]",
+        "[wtc_kWG1TotE_endvalue]",
         "[wtc_BoostKWh_endvalue]",
         "[wtc_BostkWhS_endvalue]",
     ],

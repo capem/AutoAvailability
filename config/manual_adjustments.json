@@ -1110,14 +1110,6 @@
             "notes": "Auto-imputed from production data",
             "last_updated": "2026-03-05T16:48:55.851701",
             "time_off": "2026-02-08 14:40:00"
-        },
-        {
-            "id": 13490945,
-            "alarm_code": 10400,
-            "station_nr": 2307481,
-            "notes": "Auto-imputed from production data",
-            "last_updated": "2026-03-05T16:56:42.976960",
-            "time_off": "2026-02-28 21:30:00"
         }
     ]
 }

@@ -381,6 +381,168 @@ def handle_alarm_code_1005_overlap(alarm_df):
 # ============================= DATA PROCESSING UTILITY FUNCTIONS =============================
 
 
+def impute_nan_energy_from_cumulative(results):
+    """
+    Impute NaN values in wtc_kWG1TotE_accum using the cumulative counter
+    wtc_kWG1TotE_endvalue, distributing the catch-up delta only to
+    intervals that have no active alarms.
+
+    This handles comms drops: when data is lost, _accum is NaN but the
+    cumulative _endvalue catches up when comms resume. The delta is
+    distributed evenly across non-alarmed intervals in the gap.
+
+    Counter resets (negative delta) are detected and skipped.
+
+    Args:
+        results: Merged DataFrame containing wtc_kWG1TotE_accum,
+                 wtc_kWG1TotE_endvalue, EffectiveAlarmTime, StationId,
+                 and TimeStamp columns.
+
+    Returns:
+        DataFrame with NaN wtc_kWG1TotE_accum values filled where possible.
+    """
+    if "wtc_kWG1TotE_endvalue" not in results.columns:
+        logger.warning(
+            "[CALC] wtc_kWG1TotE_endvalue column not found. "
+            "Skipping cumulative counter imputation. "
+            "Re-export counter data to include this column."
+        )
+        return results
+
+    results = results.copy()
+    total_imputed_intervals = 0
+    total_imputed_energy = 0.0
+
+    for station_id, grp in results.groupby("StationId"):
+        # Work on this station's rows sorted by time
+        idx = grp.sort_values("TimeStamp").index
+        accum = results.loc[idx, "wtc_kWG1TotE_accum"]
+        endval = results.loc[idx, "wtc_kWG1TotE_endvalue"]
+        alarm_time = results.loc[idx, "EffectiveAlarmTime"]
+
+        # Find NaN gaps in accum
+        is_nan = accum.isna()
+        if not is_nan.any():
+            continue
+
+        # Label contiguous NaN blocks
+        gap_id = (~is_nan).cumsum()
+        gap_id[~is_nan] = -1  # Mark non-NaN rows
+
+        for gid, gap_indices in gap_id[gap_id >= 0].groupby(gap_id[gap_id >= 0]):
+            gap_idx = gap_indices.index
+            pos_in_idx = idx.get_indexer(gap_idx)
+
+            # Find boundary positions
+            first_gap_pos = pos_in_idx[0]
+            last_gap_pos = pos_in_idx[-1]
+
+            # Need a valid endvalue before and after the gap
+            before_pos = first_gap_pos - 1
+            after_pos = last_gap_pos + 1
+
+            if before_pos < 0 or after_pos >= len(idx):
+                # Gap at start or end of the period — can't compute delta
+                continue
+
+            before_idx = idx[before_pos]
+            after_idx = idx[after_pos]
+
+            ev_before = endval.loc[before_idx]
+            ev_after = endval.loc[after_idx]
+
+            if pd.isna(ev_before) or pd.isna(ev_after):
+                # Can't compute delta without both boundary endvalues
+                continue
+
+            delta = ev_after - ev_before
+
+            if delta < 0:
+                # Counter reset detected — skip this gap
+                logger.info(
+                    f"[CALC] Station {station_id}: counter reset detected "
+                    f"across NaN gap ({delta:.1f} kWh). Skipping imputation."
+                )
+                continue
+
+            # Sanity: max ~'('(450))' kWh per 10-min interval for a 2.3 MW turbine (with boost)
+            max_plausible = len(gap_idx) * 450
+            if delta > max_plausible:
+                logger.warning(
+                    f"[CALC] Station {station_id}: implausible catch-up delta "
+                    f"({delta:.1f} kWh for {len(gap_idx)} intervals, "
+                    f"max plausible ~{max_plausible} kWh). "
+                    f"Likely counter anomaly. Skipping imputation."
+                )
+                continue
+
+            if delta == 0:
+                # No production during gap — fill with 0
+                results.loc[gap_idx, "wtc_kWG1TotE_accum"] = 0.0
+                total_imputed_intervals += len(gap_idx)
+                continue
+
+            # Subtract any known accum values within the gap boundaries
+            # The delta covers gap intervals + the after-boundary interval
+            # since endvalue[after] - endvalue[before] includes accum[after]
+            accum_after = accum.loc[after_idx]
+            if pd.notna(accum_after):
+                delta -= accum_after
+
+            if delta <= 0:
+                # All production accounted for by post-gap interval
+                results.loc[gap_idx, "wtc_kWG1TotE_accum"] = 0.0
+                total_imputed_intervals += len(gap_idx)
+                continue
+
+            # Identify eligible (non-alarmed) intervals in the gap
+            gap_alarm = alarm_time.loc[gap_idx]
+            eligible_mask = gap_alarm == 0
+            n_eligible = eligible_mask.sum()
+
+            if n_eligible == 0:
+                # All intervals alarmed — assign 0, log discrepancy
+                results.loc[gap_idx, "wtc_kWG1TotE_accum"] = 0.0
+                total_imputed_intervals += len(gap_idx)
+                if delta > 0:
+                    logger.warning(
+                        f"[CALC] Station {station_id}: {delta:.1f} kWh catch-up "
+                        f"delta but all {len(gap_idx)} gap intervals are alarmed. "
+                        f"Energy unaccounted for."
+                    )
+                continue
+
+            # Distribute delta evenly across eligible intervals
+            energy_per_interval = delta / n_eligible
+            eligible_idx = gap_idx[eligible_mask]
+            alarmed_idx = gap_idx[~eligible_mask]
+
+            results.loc[eligible_idx, "wtc_kWG1TotE_accum"] = round(
+                energy_per_interval, 2
+            )
+            results.loc[alarmed_idx, "wtc_kWG1TotE_accum"] = 0.0
+
+            total_imputed_intervals += len(gap_idx)
+            total_imputed_energy += delta
+
+            logger.debug(
+                f"[CALC] Station {station_id}: imputed {delta:.1f} kWh across "
+                f"{n_eligible}/{len(gap_idx)} eligible intervals "
+                f"({energy_per_interval:.2f} kWh each)."
+            )
+
+    if total_imputed_intervals > 0:
+        logger.info(
+            f"[CALC] Cumulative counter imputation complete: "
+            f"{total_imputed_intervals} intervals imputed, "
+            f"{total_imputed_energy:.1f} kWh total energy recovered."
+        )
+    else:
+        logger.info("[CALC] No NaN gaps found requiring cumulative counter imputation.")
+
+    return results
+
+
 def expand_to_full_time_range(df, time_range, station_ids):
     """
     Expand a DataFrame to include all timestamps in the specified time range for all specified stations.
@@ -1250,6 +1412,11 @@ def full_calculation(period):
     )
     results = results.infer_objects()
     results["Duration 2006(s)"] = results["Duration 2006(s)"].fillna(0)
+
+    # -------- Impute NaN energy from cumulative counter --------
+    # Must run AFTER alarm data is merged (EffectiveAlarmTime available)
+    # but BEFORE Energy_To_Use assignment so imputed values flow downstream.
+    results = impute_nan_energy_from_cumulative(results)
 
     # Determine calculation source for energy
     calc_source = get_setting("calculation_source", "energy")

@@ -410,6 +410,9 @@ def impute_nan_energy_from_cumulative(results):
         return results
 
     results = results.copy()
+    if "Energy_Source" not in results.columns:
+        results["Energy_Source"] = "actual"
+
     total_imputed_intervals = 0
     total_imputed_energy = 0.0
 
@@ -465,12 +468,14 @@ def impute_nan_energy_from_cumulative(results):
                 )
                 continue
 
-            # Sanity: max ~'('(450))' kWh per 10-min interval for a 2.3 MW turbine (with boost)
-            max_plausible = len(gap_idx) * 450
+            # Sanity: max ~450 kWh per 10-min interval for a 2.3 MW turbine (with boost)
+            # The delta covers the gap intervals PLUS the after-boundary interval
+            max_intervals_covered = len(gap_idx) + 1
+            max_plausible = max_intervals_covered * 450
             if delta > max_plausible:
                 logger.warning(
                     f"[CALC] Station {station_id}: implausible catch-up delta "
-                    f"({delta:.1f} kWh for {len(gap_idx)} intervals, "
+                    f"({delta:.1f} kWh spanning {max_intervals_covered} intervals, "
                     f"max plausible ~{max_plausible} kWh). "
                     f"Likely counter anomaly. Skipping imputation."
                 )
@@ -495,39 +500,41 @@ def impute_nan_energy_from_cumulative(results):
                 total_imputed_intervals += len(gap_idx)
                 continue
 
-            # Identify eligible (non-alarmed) intervals in the gap
+            # Simple all-or-nothing check for alarms
             gap_alarm = alarm_time.loc[gap_idx]
-            eligible_mask = gap_alarm == 0
-            n_eligible = eligible_mask.sum()
+            fully_alarmed_mask = gap_alarm >= 600
 
-            if n_eligible == 0:
-                # All intervals alarmed — assign 0, log discrepancy
+            if fully_alarmed_mask.all():
+                # All intervals fully alarmed — assign 0, log discrepancy
                 results.loc[gap_idx, "wtc_kWG1TotE_accum"] = 0.0
                 total_imputed_intervals += len(gap_idx)
                 if delta > 0:
                     logger.warning(
                         f"[CALC] Station {station_id}: {delta:.1f} kWh catch-up "
-                        f"delta but all {len(gap_idx)} gap intervals are alarmed. "
+                        f"delta but all {len(gap_idx)} gap intervals are fully alarmed (>=600s). "
                         f"Energy unaccounted for."
                     )
                 continue
 
-            # Distribute delta evenly across eligible intervals
-            energy_per_interval = delta / n_eligible
-            eligible_idx = gap_idx[eligible_mask]
-            alarmed_idx = gap_idx[~eligible_mask]
+            # Distribute delta evenly across intervals that are not fully alarmed
+            eligible_idx = gap_idx[~fully_alarmed_mask]
+            alarmed_idx = gap_idx[fully_alarmed_mask]
 
+            energy_per_interval = delta / len(eligible_idx)
             results.loc[eligible_idx, "wtc_kWG1TotE_accum"] = round(
                 energy_per_interval, 2
             )
             results.loc[alarmed_idx, "wtc_kWG1TotE_accum"] = 0.0
 
+            # Set the energy source to interpolated for the imputed intervals
+            results.loc[eligible_idx, "Energy_Source"] = "interpolated"
+
             total_imputed_intervals += len(gap_idx)
             total_imputed_energy += delta
 
             logger.debug(
-                f"[CALC] Station {station_id}: imputed {delta:.1f} kWh across "
-                f"{n_eligible}/{len(gap_idx)} eligible intervals "
+                f"[CALC] Station {station_id}: imputed {delta:.1f} kWh evenly across "
+                f"{len(eligible_idx)}/{len(gap_idx)} eligible intervals "
                 f"({energy_per_interval:.2f} kWh each)."
             )
 
@@ -961,6 +968,26 @@ class DataLoader:
 
         return digital_input_data
 
+    # ------------------------------Flag Data---------------------------
+    @staticmethod
+    def load_flag_data(period):
+        """
+        Load flag data for the specified period.
+
+        Args:
+            period: Period in YYYY-MM format
+
+        Returns:
+            DataFrame containing flag data with parsed timestamps
+        """
+        # Load flag data from CSV
+        flag_data = read_csv_data("flg", period)
+
+        # Convert TimeStamp column to datetime
+        flag_data["TimeStamp"] = pd.to_datetime(flag_data["TimeStamp"])
+
+        return flag_data
+
     # ------------------------------Load All Data---------------------------
     @staticmethod
     def load_all_data(period):
@@ -971,7 +998,7 @@ class DataLoader:
             period: Period in YYYY-MM format
 
         Returns:
-            Tuple of DataFrames (met_data, turbine_data, alarm_data, counter_data, grid_data, digital_input_data)
+            Tuple of DataFrames (met_data, turbine_data, alarm_data, counter_data, grid_data, digital_input_data, flag_data)
         """
         return (
             DataLoader.load_met_data(period),
@@ -980,6 +1007,7 @@ class DataLoader:
             DataLoader.load_counter_data(period),
             DataLoader.load_grid_data(period),
             DataLoader.load_digital_input_data(period),
+            DataLoader.load_flag_data(period),
         )
 
 
@@ -1011,9 +1039,15 @@ def full_calculation(period):
         DataFrame containing detailed availability results
     """
     # Load all data files for the period
-    met_data, turbine_data, alarm_data, counter_data, grid_data, digital_input_data = (
-        DataLoader.load_all_data(period)
-    )
+    (
+        met_data,
+        turbine_data,
+        alarm_data,
+        counter_data,
+        grid_data,
+        digital_input_data,
+        flag_data,
+    ) = DataLoader.load_all_data(period)
 
     # ------------------------------------------------------------
     # Define period start and end times
@@ -1121,6 +1155,7 @@ def full_calculation(period):
     if missing_timeoff_mask.any():
         num_imputed = 0
         imputed_adjustments = []
+        missing_production = []
 
         # Iterate over alarms missing TimeOff
         for idx, alarm_row in alarm_data[missing_timeoff_mask].iterrows():
@@ -1153,15 +1188,20 @@ def full_calculation(period):
                 )
             else:
                 # No production found for this turbine after alarm started
-                logger.warning(
-                    f"[CALC] Alarm ID {alarm_row['ID']} (Station {st_nr}): "
-                    f"No production data found after {t_on}. "
-                    f"Will fall back to period_end."
+                missing_production.append(
+                    f"Alarm ID {alarm_row['ID']} (Station {st_nr}): after {t_on}"
                 )
 
         logger.info(
             f"[CALC] Successfully imputed {num_imputed} missing TimeOffs using production data."
         )
+
+        if missing_production:
+            warning_lines = [
+                f"[CALC] {len(missing_production)} alarms will fall back to period_end (no production data found):"
+            ]
+            warning_lines.extend(f"  - {msg}" for msg in missing_production)
+            logger.warning("\n".join(warning_lines))
 
         # Persist adjustments
         if imputed_adjustments:
@@ -1410,6 +1450,10 @@ def full_calculation(period):
     results = pd.merge(
         results, digital_input_data, on=["StationId", "TimeStamp"], how="left"
     )
+
+    # Merge with flag data (Turbine in operation)
+    results = pd.merge(results, flag_data, on=["StationId", "TimeStamp"], how="left")
+
     results = results.infer_objects()
     results["Duration 2006(s)"] = results["Duration 2006(s)"].fillna(0)
 
@@ -1435,7 +1479,7 @@ def full_calculation(period):
     operational_turbines_mask = (
         (results["Energy_To_Use"] > 0)  # Producing energy
         & (results["EffectiveAlarmTime"] == 0)  # No active alarms
-        & (results["wtc_ActPower_min"] > 0)  # Minimum power > 0
+        & (results["wtc_ScInOper_timeon"] > 0)  # Turbine in operation flag > 0
         & (results["Duration 2006(s)"] == 0)  # No code 2006 warnings
         & (  # Not curtailed or high power despite curtailment
             (results["wtc_PowerRed_timeon"] == 0)
@@ -1834,7 +1878,7 @@ def full_calculation(period):
     # Round numeric columns to 2 decimal places and convert to float32
     numeric_columns = list(
         set(final_results.columns)
-        - set(("StationId", "TimeStamp", "UK Text", "Epot_Method"))
+        - set(("StationId", "TimeStamp", "UK Text", "Epot_Method", "Energy_Source"))
     )
     final_results[numeric_columns] = (
         final_results[numeric_columns].round(2).astype(np.float32)

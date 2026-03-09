@@ -45,6 +45,7 @@ TABLE_MAPPINGS = {
     "grd": "tblSCTurGrid",
     "cnt": "tblSCTurCount",
     "din": "tblSCTurDigiIn",
+    "flg": "tblSCTurFlag",
 }
 
 # Column definitions for each table (excluding unique keys where appropriate for checksum)
@@ -105,6 +106,7 @@ TABLE_COLUMNS = {
         "[wtc_BostkWhS_endvalue]",
     ],
     "tblSCTurDigiIn": ["[TimeStamp]", "[StationId]", "[wtc_PowerRed_timeon]"],
+    "tblSCTurFlag": ["[TimeStamp]", "[StationId]", "[wtc_ScInOper_timeon]"],
 }
 
 # Columns to use for checksum calculation (often excludes simple primary keys like 'ID')
@@ -122,6 +124,7 @@ TABLE_CHECKSUM_COLUMNS = {
     "tblSCTurGrid": TABLE_COLUMNS["tblSCTurGrid"],
     "tblSCTurCount": TABLE_COLUMNS["tblSCTurCount"],
     "tblSCTurDigiIn": TABLE_COLUMNS["tblSCTurDigiIn"],
+    "tblSCTurFlag": TABLE_COLUMNS["tblSCTurFlag"],
 }
 
 
